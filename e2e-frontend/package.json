@@ -1,24 +1,24 @@
 {
-  "name": "e2e-frontend",
-  "version": "1.0.0",
-  "description": "Frontend E2E tests for OpenWA Dashboard (production-like environment)",
-  "main": "index.js",
-  "scripts": {
-    "env:up": "docker compose -f docker-compose.e2e.yml up --build -d --wait",
-    "env:down": "docker compose -f docker-compose.e2e.yml down -v",
-    "env:logs": "docker compose -f docker-compose.e2e.yml logs -f",
-    "test": "npx playwright test",
-    "test:headed": "npx playwright test --headed",
-    "test:ui": "npx playwright test --ui",
-    "test:report": "npx playwright show-report",
-    "e2e": "npm run env:up && npx playwright test; npm run env:down",
-    "e2e:ci": "npm run env:up && npx playwright test --reporter=line; EXIT=$?; npm run env:down; exit $EXIT"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "@playwright/test": "^1.60.0"
-  }
+    "name": "e2e-frontend",
+    "version": "1.0.0",
+    "description": "Frontend E2E tests for OpenWA Dashboard (production-like environment)",
+    "main": "index.js",
+    "scripts": {
+        "env:up": "docker compose -f docker-compose.e2e.yml up --build -d --wait",
+        "env:down": "docker compose -f docker-compose.e2e.yml down -v",
+        "env:logs": "docker compose -f docker-compose.e2e.yml logs -f",
+        "test": "npx playwright test",
+        "test:headed": "npx playwright test --headed",
+        "test:ui": "npx playwright test --ui",
+        "test:report": "npx playwright show-report",
+        "e2e": "npm run env:up && npx playwright test; npm run env:down",
+        "e2e:ci": "npm run env:up && npx playwright test --reporter=line; EXIT=$?; npm run env:down; exit $EXIT"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "devDependencies": {
+        "@playwright/test": "^1.60.0"
+    }
 }

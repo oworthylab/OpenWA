@@ -14,7 +14,7 @@ test.afterAll(async () => {
                 await fetch(`${baseUrl}/api/sessions/${(s as any).id}`, {
                     method: 'DELETE',
                     headers: { 'X-API-Key': TEST_API_KEY },
-                }).catch(() => {});
+                }).catch(() => { });
             }
         }
     } catch {
