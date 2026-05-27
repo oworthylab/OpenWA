@@ -1,0 +1,38 @@
+{
+    "name": "openwa-e2e-tests",
+    "version": "1.0.0",
+    "description": "Stack-agnostic end-to-end tests for OpenWA API Gateway",
+    "private": true,
+    "scripts": {
+        "test": "jest --runInBand --forceExit",
+        "test:verbose": "jest --runInBand --forceExit --verbose",
+        "test:health": "jest --runInBand --forceExit --testPathPattern=health",
+        "test:auth": "jest --runInBand --forceExit --testPathPattern=auth",
+        "test:sessions": "jest --runInBand --forceExit --testPathPattern=sessions",
+        "test:messages": "jest --runInBand --forceExit --testPathPattern=messages",
+        "test:webhooks": "jest --runInBand --forceExit --testPathPattern=webhooks",
+        "test:contacts": "jest --runInBand --forceExit --testPathPattern=contacts",
+        "test:groups": "jest --runInBand --forceExit --testPathPattern=groups",
+        "test:settings": "jest --runInBand --forceExit --testPathPattern=settings",
+        "test:stats": "jest --runInBand --forceExit --testPathPattern=stats",
+        "test:audit": "jest --runInBand --forceExit --testPathPattern=audit",
+        "test:infra": "jest --runInBand --forceExit --testPathPattern=infra",
+        "docker:up": "docker compose -f docker-compose.e2e.yml up -d --build --wait",
+        "docker:down": "docker compose -f docker-compose.e2e.yml down -v",
+        "docker:logs": "docker compose -f docker-compose.e2e.yml logs",
+        "e2e": "npm run docker:up && npm test; npm run docker:down",
+        "e2e:keep": "npm run docker:up && npm test"
+    },
+    "dependencies": {
+        "axios": "^1.7.0",
+        "ws": "^8.17.0"
+    },
+    "devDependencies": {
+        "@types/jest": "^30.0.0",
+        "@types/node": "^22.0.0",
+        "@types/ws": "^8.5.0",
+        "jest": "^30.0.0",
+        "ts-jest": "^29.2.0",
+        "typescript": "^5.5.0"
+    }
+}
