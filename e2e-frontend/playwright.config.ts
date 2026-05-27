@@ -3,12 +3,16 @@ import { defineConfig } from '@playwright/test';
 /**
  * Playwright configuration for OpenWA Dashboard E2E tests.
  *
- * These tests are stack-agnostic - they test the UI behavior through the browser
- * without depending on React/Vite/any specific framework internals.
+ * These tests run against a PRODUCTION-LIKE environment:
+ * - Dashboard: nginx serving built static files (same as production)
+ * - Backend: node dist/main in production mode (same as production)
+ * - Proxy: nginx proxies /api to backend (same as production)
  *
- * Prerequisites:
- * - Backend API running on port 2785 (Docker container)
- * - Dashboard dev server running on port 2886 (Vite)
+ * Setup:
+ *   cd e2e-frontend
+ *   docker compose -f docker-compose.e2e.yml up --build -d
+ *   npx playwright test
+ *   docker compose -f docker-compose.e2e.yml down
  */
 export default defineConfig({
     testDir: './tests',
@@ -23,7 +27,7 @@ export default defineConfig({
         timeout: 10000,
     },
     use: {
-        baseURL: 'http://localhost:2886',
+        baseURL: process.env.BASE_URL || 'http://localhost:2886',
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         headless: true,
@@ -32,14 +36,6 @@ export default defineConfig({
         {
             name: 'chromium',
             use: { browserName: 'chromium' },
-        },
-    ],
-    webServer: [
-        {
-            command: 'cd ../dashboard && npm run dev',
-            port: 2886,
-            reuseExistingServer: true,
-            timeout: 30000,
         },
     ],
 });

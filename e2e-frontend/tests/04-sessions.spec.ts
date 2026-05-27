@@ -1,21 +1,24 @@
 import { test, expect } from '@playwright/test';
-import { login, waitForContentLoad, uniqueSessionName } from '../helpers/test-utils';
+import { login, waitForContentLoad, uniqueSessionName, TEST_API_KEY } from '../helpers/test-utils';
 
-// Clean up sessions created during tests
+// Clean up sessions created during tests (via nginx proxy, same as production path)
 test.afterAll(async () => {
-    const http = require('http');
-    const sessions: any[] = await new Promise((resolve) => {
-        http.get({ hostname: 'localhost', port: 2785, path: '/api/sessions', headers: { 'X-API-Key': 'dev-admin-key' } }, (res: any) => {
-            let d = '';
-            res.on('data', (c: string) => d += c);
-            res.on('end', () => resolve(JSON.parse(d)));
+    const baseUrl = process.env.BASE_URL || 'http://localhost:2886';
+    try {
+        const res = await fetch(`${baseUrl}/api/sessions`, {
+            headers: { 'X-API-Key': TEST_API_KEY },
         });
-    });
-    for (const s of sessions) {
-        await new Promise<void>((resolve) => {
-            const req = http.request({ hostname: 'localhost', port: 2785, path: '/api/sessions/' + s.id, method: 'DELETE', headers: { 'X-API-Key': 'dev-admin-key' } }, () => resolve());
-            req.end();
-        });
+        if (res.ok) {
+            const sessions = await res.json();
+            for (const s of sessions) {
+                await fetch(`${baseUrl}/api/sessions/${(s as any).id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-API-Key': TEST_API_KEY },
+                }).catch(() => {});
+            }
+        }
+    } catch {
+        // Cleanup is best-effort
     }
 });
 

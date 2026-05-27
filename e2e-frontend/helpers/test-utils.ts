@@ -1,9 +1,9 @@
 import { Page } from '@playwright/test';
 
 /**
- * API key used for testing. Must match a valid key in the backend.
+ * API key used for testing. Must match DEFAULT_ADMIN_KEY in docker-compose.e2e.yml.
  */
-export const TEST_API_KEY = process.env.TEST_API_KEY || 'dev-admin-key';
+export const TEST_API_KEY = process.env.TEST_API_KEY || 'e2e-admin-key';
 
 /**
  * Base URL for the dashboard
