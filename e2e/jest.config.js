@@ -9,7 +9,7 @@ module.exports = {
   },
   globalSetup: './setup/global-setup.ts',
   globalTeardown: './setup/global-teardown.ts',
-  setupFilesAfterFramework: [],
+  setupFilesAfterEnv: [],
   testTimeout: 30000,
   // Run tests sequentially since they share state
   maxWorkers: 1,

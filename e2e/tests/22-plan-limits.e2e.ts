@@ -116,8 +116,8 @@ describe('Plan Limits & Rate Limiting', () => {
 
         it('should include rate limit headers in responses', async () => {
             const res = await superAdmin.sendTextMessage(sessionId, {
-                to: '1234567890@c.us',
-                message: 'Rate limit test',
+                chatId: '1234567890@c.us',
+                text: 'Rate limit test',
             });
             // Even if message fails (no active session), rate limit headers should be present
             const headers = res.headers;
@@ -135,8 +135,8 @@ describe('Plan Limits & Rate Limiting', () => {
             for (let i = 0; i < 50; i++) {
                 requests.push(
                     superAdmin.sendTextMessage(sessionId, {
-                        to: '1234567890@c.us',
-                        message: `Burst message ${i}`,
+                        chatId: '1234567890@c.us',
+                        text: `Burst message ${i}`,
                     })
                 );
             }

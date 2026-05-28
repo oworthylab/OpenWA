@@ -138,8 +138,8 @@ describe(`Engine Parity (adapter: ${ENGINE})`, () => {
 
         it('should accept text message with consistent request/response', async () => {
             const res = await client.sendTextMessage(sessionId, {
-                to: '1234567890@c.us',
-                message: 'Parity test message',
+                chatId: '1234567890@c.us',
+                text: 'Parity test message',
             });
             // Session may not be connected, so accept connection-related errors too
             expect([200, 201, 400, 503]).toContain(res.status);
@@ -169,8 +169,8 @@ describe(`Engine Parity (adapter: ${ENGINE})`, () => {
 
         it('should validate message recipients consistently', async () => {
             const res = await client.sendTextMessage(sessionId, {
-                to: '',
-                message: 'No recipient',
+                chatId: '',
+                text: 'No recipient',
             });
             expect([400, 422]).toContain(res.status);
         });
