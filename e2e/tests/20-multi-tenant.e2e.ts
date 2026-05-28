@@ -9,8 +9,9 @@
  * - Unauthenticated tenant access rejection
  */
 import { ApiClient, createUnauthenticatedClient, createClientWithKey } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 
-describe('Multi-Tenant Isolation', () => {
+describeServerlessAcceptance('Multi-Tenant Isolation', () => {
     let superAdminClient: ApiClient;
     let tenantAClient: ApiClient;
     let tenantBClient: ApiClient;

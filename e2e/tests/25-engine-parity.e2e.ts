@@ -17,10 +17,11 @@
  * - Event payload structure
  */
 import { ApiClient, createUnauthenticatedClient } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 
 const ENGINE = process.env.ENGINE_ADAPTER || 'auto';
 
-describe(`Engine Parity (adapter: ${ENGINE})`, () => {
+describeServerlessAcceptance(`Engine Parity (adapter: ${ENGINE})`, () => {
     let client: ApiClient;
 
     beforeAll(() => {

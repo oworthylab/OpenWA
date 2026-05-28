@@ -12,6 +12,7 @@
  * - Duplicate session name handling
  */
 import { ApiClient } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 
 describe('Session Management', () => {
     let client: ApiClient;
@@ -124,7 +125,7 @@ describe('Session Management', () => {
         });
     });
 
-    describe('POST /api/sessions/:id/pairing-code (Pairing Code Auth)', () => {
+    describeServerlessAcceptance('POST /api/sessions/:id/pairing-code (Pairing Code Auth)', () => {
         let pairingSessionId: string;
 
         beforeAll(async () => {

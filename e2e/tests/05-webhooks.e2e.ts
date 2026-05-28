@@ -11,6 +11,7 @@
  * - HMAC signature verification
  */
 import { ApiClient } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 import * as crypto from 'crypto';
 
 describe('Webhook Management', () => {
@@ -167,7 +168,7 @@ describe('Webhook Management', () => {
         });
     });
 
-    describe('HMAC Signature Verification', () => {
+    describeServerlessAcceptance('HMAC Signature Verification', () => {
         const webhookSecret = 'e2e-hmac-secret-key';
         let signedWebhookId: string;
 

@@ -10,8 +10,9 @@
  * - Contact-conversation linking
  */
 import { ApiClient } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 
-describe('CRM Features', () => {
+describeServerlessAcceptance('CRM Features', () => {
     let client: ApiClient;
 
     beforeAll(() => {

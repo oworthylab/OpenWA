@@ -11,8 +11,9 @@
  * - Invalid file type rejection
  */
 import { ApiClient, createClientWithKey } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 
-describe('Media Storage', () => {
+describeServerlessAcceptance('Media Storage', () => {
     let client: ApiClient;
     let sessionId: string;
 

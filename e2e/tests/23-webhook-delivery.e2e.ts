@@ -10,9 +10,10 @@
  * - Event filtering and selective delivery
  */
 import { ApiClient } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 import * as crypto from 'crypto';
 
-describe('Webhook Delivery & Reliability', () => {
+describeServerlessAcceptance('Webhook Delivery & Reliability', () => {
     let client: ApiClient;
     let sessionId: string;
 

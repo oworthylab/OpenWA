@@ -10,8 +10,9 @@
  * - Rate limit headers
  */
 import { ApiClient, createClientWithKey } from '../helpers/api-client';
+import { describeServerlessAcceptance } from '../helpers/acceptance';
 
-describe('Plan Limits & Rate Limiting', () => {
+describeServerlessAcceptance('Plan Limits & Rate Limiting', () => {
     let superAdmin: ApiClient;
 
     beforeAll(() => {
