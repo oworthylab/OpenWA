@@ -22,20 +22,16 @@ Rewrite OpenWA from a monolithic NestJS + Puppeteer + Docker application into a 
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Cloudflare ($5/month Workers Paid Plan)                             │
 │                                                                     │
-│  Pages ──────────── Dashboard (Astro 6 + React)                     │
-│  Workers ─────────── REST API (Elysia)                              │
+│  Pages ──────────── Dashboard (TanStack Start + React)               │
+│  Workers ─────────── REST API (Elysia, external consumers only)     │
 │  Durable Objects ─── WhatsApp Engine (Baileys fork, 1 DO/session)   │
 │  Durable Objects ─── WebSocket Relay (real-time dashboard events)   │
+│  D1 (Control) ────── Tenants, API keys, plans, billing              │
+│  D1 (×N Tenant) ──── Sessions, messages, contacts, webhooks, CRM   │
 │  Queues ──────────── Webhook delivery (with retries)                │
 │  KV ─────────────── API key cache, rate limiting, session tokens    │
 │  R2 ─────────────── Media storage (images, videos, documents)       │
-│  Hyperdrive ──────── NeonDB connection pooling                      │
 │                                                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│ NeonDB (Free Tier → Paid as needed)                                 │
-│                                                                     │
-│  PostgreSQL ──────── Tenants, sessions, messages, contacts,         │
-│                      webhooks, API keys, CRM data                   │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -74,13 +70,14 @@ Rewrite OpenWA from a monolithic NestJS + Puppeteer + Docker application into a 
 ```
 openwa/
 ├── apps/
-│   ├── dashboard/                → Astro 6 + @astrojs/cloudflare
-│   │   ├── src/
-│   │   │   ├── pages/            → Astro pages (SSR on Workers)
-│   │   │   ├── components/       → React islands
-│   │   │   ├── layouts/
-│   │   │   └── lib/
-│   │   ├── astro.config.ts
+│   ├── dashboard/                → TanStack Start (Full React SPA + Server Functions)
+│   │   ├── app/
+│   │   │   ├── routes/           → File-based routes (TanStack Router)
+│   │   │   ├── server/           → Server functions (D1/DO direct access)
+│   │   │   ├── components/       → React components
+│   │   │   └── lib/              → Utilities, hooks
+│   │   ├── app.config.ts
+│   │   ├── vite.config.ts        → @cloudflare/vite-plugin
 │   │   └── wrangler.jsonc
 │   │
 │   └── desktop/                  → Electron application
@@ -164,10 +161,9 @@ openwa/
 │   │   │   └── index.ts             → IWhatsAppEngine implementation
 │   │   └── package.json
 │   │
-│   ├── db/                       → Drizzle ORM + NeonDB
+│   ├── db/                       → Drizzle ORM + Cloudflare D1 (SQLite)
 │   │   ├── src/
-│   │   │   ├── schema/
-│   │   │   │   ├── tenants.ts
+│   │   │   ├── schema/           → SQLite schemas (no tenant_id — DB-per-tenant)
 │   │   │   │   ├── sessions.ts
 │   │   │   │   ├── messages.ts
 │   │   │   │   ├── contacts.ts
@@ -176,8 +172,10 @@ openwa/
 │   │   │   │   ├── labels.ts
 │   │   │   │   ├── groups.ts
 │   │   │   │   └── crm.ts
-│   │   │   ├── client.ts         → Dual driver (postgres-js / neon-serverless)
-│   │   │   ├── migrate.ts        → Migration runner
+│   │   │   ├── control-plane/    → Control plane schema (tenants, plans, billing)
+│   │   │   │   └── tenants.ts
+│   │   │   ├── client.ts         → D1 binding wrapper + tenant DB resolver
+│   │   │   ├── migrate.ts        → Cross-tenant migration runner
 │   │   │   └── index.ts          → Exports
 │   │   ├── drizzle/              → Generated migrations
 │   │   └── package.json
@@ -454,142 +452,178 @@ CREATED → CONNECTING → QR_READY → SCANNING → AUTHENTICATED → CONNECTED
 
 ## 6. Database Schema (`packages/db`)
 
-### NeonDB via Drizzle ORM
+### Cloudflare D1 — Database-Per-Tenant Architecture
+
+**Model:** Each tenant gets their own isolated D1 database. A control plane D1 holds tenant metadata.
+
+```
+Control Plane (D1: openwa-control)
+├── tenants
+├── api_keys
+├── plans
+└── billing
+
+Per-Tenant (D1: openwa-tenant-{slug})
+├── sessions
+├── messages
+├── contacts
+├── webhooks
+├── labels
+├── conversations
+└── audit_log
+```
+
+### Control Plane Schema (SQLite via Drizzle sqlite-core)
 
 ```sql
--- Tenants (organizations)
+-- Control plane DB: tenants & API keys (global)
 CREATE TABLE tenants (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   name        TEXT NOT NULL,
   slug        TEXT UNIQUE NOT NULL,
-  plan        TEXT NOT NULL DEFAULT 'free',       -- free | pro | business
+  plan        TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'business')),
   max_sessions INTEGER NOT NULL DEFAULT 1,
-  created_at  TIMESTAMPTZ DEFAULT now(),
-  updated_at  TIMESTAMPTZ DEFAULT now()
+  d1_database_id TEXT,                             -- CF D1 database ID for this tenant
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
--- Sessions (WhatsApp connections)
-CREATE TABLE sessions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  name        TEXT NOT NULL,
-  phone       TEXT,
-  status      TEXT NOT NULL DEFAULT 'created',    -- created|connecting|connected|disconnected
-  do_id       TEXT,                                -- Durable Object ID
-  push_name   TEXT,
-  created_at  TIMESTAMPTZ DEFAULT now(),
-  updated_at  TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, name)
-);
-
--- API Keys
+-- API Keys (in control plane for global auth lookup)
 CREATE TABLE api_keys (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   key_hash    TEXT NOT NULL UNIQUE,                -- SHA-256 of actual key
   key_prefix  TEXT NOT NULL,                       -- First 8 chars for identification
-  permissions JSONB NOT NULL DEFAULT '["*"]',
-  last_used   TIMESTAMPTZ,
-  expires_at  TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ DEFAULT now()
+  role        TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator', 'viewer')),
+  allowed_ips TEXT DEFAULT '[]',                   -- JSON array
+  allowed_sessions TEXT DEFAULT '[]',              -- JSON array
+  is_active   INTEGER NOT NULL DEFAULT 1,
+  expires_at  INTEGER,
+  last_used_at INTEGER,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX idx_api_keys_tenant ON api_keys(tenant_id);
+CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
+```
+
+### Per-Tenant Schema (SQLite — no tenant_id needed!)
+
+```sql
+-- Sessions (WhatsApp connections)
+CREATE TABLE sessions (
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  name        TEXT NOT NULL UNIQUE,
+  phone       TEXT,
+  status      TEXT NOT NULL DEFAULT 'created'
+              CHECK (status IN ('created','initializing','qr_ready','authenticating','ready','disconnected','failed')),
+  do_id       TEXT,                                -- Durable Object ID
+  push_name   TEXT,
+  proxy_url   TEXT,
+  proxy_type  TEXT,
+  config      TEXT DEFAULT '{}',                   -- JSON serialized
+  connected_at INTEGER,
+  last_active_at INTEGER,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 -- Messages (stored for CRM/history)
 CREATE TABLE messages (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  session_id  UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   wa_id       TEXT NOT NULL,                       -- WhatsApp message ID
   chat_id     TEXT NOT NULL,
-  from_me     BOOLEAN NOT NULL,
-  type        TEXT NOT NULL,                       -- text|image|video|audio|document|location|contact|sticker
+  from_jid    TEXT,
+  to_jid      TEXT,
+  type        TEXT NOT NULL DEFAULT 'text',        -- text|image|video|audio|document|location|contact|sticker
   body        TEXT,
   media_url   TEXT,                                -- R2 URL if media stored
   media_mime  TEXT,
-  quoted_id   TEXT,                                -- Reply-to message ID
-  status      TEXT DEFAULT 'sent',                 -- sent|delivered|read|failed
-  wa_timestamp BIGINT NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT now(),
+  direction   TEXT NOT NULL DEFAULT 'outgoing' CHECK (direction IN ('incoming', 'outgoing')),
+  status      TEXT DEFAULT 'sent' CHECK (status IN ('pending','sent','delivered','read','failed')),
+  metadata    TEXT DEFAULT '{}',                   -- JSON
+  wa_timestamp INTEGER NOT NULL,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(session_id, wa_id)
 );
 
 -- Contacts (CRM)
 CREATE TABLE contacts (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  wa_id       TEXT NOT NULL,                       -- phone@c.us
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  wa_id       TEXT NOT NULL UNIQUE,                -- phone@c.us
   phone       TEXT NOT NULL,
   name        TEXT,
   push_name   TEXT,
-  tags        TEXT[] DEFAULT '{}',
-  metadata    JSONB DEFAULT '{}',                  -- Custom fields (industry-specific)
-  created_at  TIMESTAMPTZ DEFAULT now(),
-  updated_at  TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, wa_id)
+  tags        TEXT DEFAULT '[]',                   -- JSON array
+  metadata    TEXT DEFAULT '{}',                   -- JSON (custom fields)
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 -- Webhooks
 CREATE TABLE webhooks (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  session_id  UUID REFERENCES sessions(id) ON DELETE CASCADE,  -- NULL = all sessions
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  session_id  TEXT REFERENCES sessions(id) ON DELETE CASCADE,  -- NULL = all sessions
   url         TEXT NOT NULL,
-  events      TEXT[] NOT NULL,                     -- message.received, message.ack, session.status, etc.
+  events      TEXT NOT NULL DEFAULT '["message.received"]',    -- JSON array
   secret      TEXT,                                -- HMAC signing secret
-  active      BOOLEAN DEFAULT true,
+  headers     TEXT DEFAULT '{}',                   -- JSON
+  active      INTEGER NOT NULL DEFAULT 1,
   retry_count INTEGER DEFAULT 3,
-  created_at  TIMESTAMPTZ DEFAULT now()
+  last_triggered_at INTEGER,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 -- Labels
 CREATE TABLE labels (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  session_id  UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   wa_label_id TEXT NOT NULL,
   name        TEXT NOT NULL,
   color       TEXT,
-  created_at  TIMESTAMPTZ DEFAULT now()
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(session_id, wa_label_id)
 );
 
 -- CRM Conversations (aggregated chat view)
 CREATE TABLE conversations (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  session_id  UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  contact_id  UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  contact_id  TEXT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
   chat_id     TEXT NOT NULL,
-  last_message_at TIMESTAMPTZ,
+  last_message_at INTEGER,
   unread_count INTEGER DEFAULT 0,
-  status      TEXT DEFAULT 'open',                 -- open|closed|archived
+  status      TEXT DEFAULT 'open' CHECK (status IN ('open','closed','archived')),
   assigned_to TEXT,                                -- Agent/team assignment
-  metadata    JSONB DEFAULT '{}',
+  metadata    TEXT DEFAULT '{}',                   -- JSON
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(session_id, chat_id)
 );
 
 -- Audit Log
 CREATE TABLE audit_log (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL,
+  id          TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
   action      TEXT NOT NULL,
   resource    TEXT NOT NULL,
   resource_id TEXT,
   actor       TEXT NOT NULL,                       -- API key prefix or user
-  details     JSONB,
+  details     TEXT,                                -- JSON
   ip_address  TEXT,
-  created_at  TIMESTAMPTZ DEFAULT now()
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
--- Indexes
+-- Indexes (per-tenant DB — no tenant_id filtering needed)
 CREATE INDEX idx_messages_chat ON messages(session_id, chat_id, wa_timestamp DESC);
-CREATE INDEX idx_messages_tenant ON messages(tenant_id, created_at DESC);
-CREATE INDEX idx_contacts_tenant ON contacts(tenant_id);
-CREATE INDEX idx_contacts_phone ON contacts(tenant_id, phone);
-CREATE INDEX idx_sessions_tenant ON sessions(tenant_id);
-CREATE INDEX idx_webhooks_tenant ON webhooks(tenant_id, active);
-CREATE INDEX idx_conversations_tenant ON conversations(tenant_id, last_message_at DESC);
-CREATE INDEX idx_audit_tenant ON audit_log(tenant_id, created_at DESC);
+CREATE INDEX idx_messages_created ON messages(created_at DESC);
+CREATE INDEX idx_contacts_phone ON contacts(phone);
+CREATE INDEX idx_webhooks_session ON webhooks(session_id, active);
+CREATE INDEX idx_conversations_session ON conversations(session_id, last_message_at DESC);
+CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
 ```
 
 ---
@@ -766,9 +800,11 @@ All endpoints require `X-API-Key` header. Tenant is resolved from the API key.
 ### Tenant Resolution Flow
 
 ```
-Request → API Key Header → KV Cache Lookup → Resolve tenant_id
+Request → API Key Header → KV Cache Lookup → Resolve tenant_id + D1 DB name
                                     ↓ (cache miss)
-                              NeonDB api_keys table → cache in KV (5min TTL)
+                              D1 Control Plane api_keys table → cache in KV (5min TTL)
+                                    ↓
+                              Resolve tenant D1 database → bind dynamically
 ```
 
 ---
@@ -784,7 +820,7 @@ Request → API Key Header → KV Cache Lookup → Resolve tenant_id
 - **Native notifications** for incoming messages
 - **Drag & drop media** sending
 - **Offline message history** (local SQLite cache)
-- **Optional cloud sync** — push contacts/messages to NeonDB
+- **Optional cloud sync** — push contacts/messages to D1 via API
 - **Auto-updater** via GitHub Releases (electron-updater)
 
 ### IPC Bridge
@@ -900,6 +936,12 @@ async function onOrderPlaced(order: Order) {
     ]
   },
 
+  // D1 Databases
+  "d1_databases": [
+    { "binding": "CONTROL_DB", "database_name": "openwa-control", "database_id": "..." }
+    // Tenant DBs are resolved dynamically via D1 REST API or env bindings
+  ],
+
   // KV (API key cache, rate limiting)
   "kv_namespaces": [
     { "binding": "AUTH_KV", "id": "..." },
@@ -919,12 +961,7 @@ async function onOrderPlaced(order: Order) {
     "consumers": [
       { "queue": "openwa-webhooks", "max_retries": 3, "dead_letter_queue": "openwa-webhooks-dlq" }
     ]
-  },
-
-  // Hyperdrive (NeonDB connection pooling)
-  "hyperdrive": [
-    { "binding": "DB", "id": "..." }
-  ]
+  }
 }
 ```
 
@@ -936,7 +973,7 @@ async function onOrderPlaced(order: Order) {
 |-------|-----------|
 | **API Authentication** | API key (SHA-256 hashed in DB, prefix-indexed in KV) |
 | **Dashboard Auth** | better-auth (session cookies, OAuth providers) |
-| **Tenant Isolation** | All DB queries filtered by `tenant_id` from resolved API key |
+| **Tenant Isolation** | Physical isolation via DB-per-tenant (separate D1 databases) |
 | **Webhook Signing** | HMAC-SHA256 with per-webhook secret |
 | **Rate Limiting** | KV-based sliding window (per API key) |
 | **Input Validation** | Valibot schemas on all endpoints |
@@ -971,7 +1008,7 @@ Durable Object (WA_SESSION)
     │
     ├──► Decrypt (Signal Protocol)
     ├──► Parse (Protobuf)
-    ├──► Store in NeonDB (messages table)
+    ├──► Store in D1 (messages table, per-tenant DB)
     ├──► Push to WS_RELAY DO → all connected dashboard clients
     └──► Enqueue webhook delivery → Cloudflare Queue
                                         │
@@ -1001,7 +1038,7 @@ bun run dev --filter=@openwa/desktop
 
 # Database
 bun run db:generate    # Generate migration from schema changes
-bun run db:migrate     # Apply migrations to NeonDB
+bun run db:migrate     # Apply migrations to all tenant D1 databases
 bun run db:studio      # Open Drizzle Studio
 
 # Deploy
@@ -1028,7 +1065,7 @@ bun run format
 | **Baileys upstream breaking** | Protocol stops working | Pin version, maintain fork, monitor WA Web updates |
 | **DO eviction/hibernation** | Temporary disconnect | Auth persisted in DO storage; Alarm-based reconnect; <5s recovery |
 | **DO 128MB memory limit** | Crash if too many contacts loaded | Lazy-load contacts from DB, don't cache all in memory |
-| **NeonDB cold start** | 2-5s first query after idle | Hyperdrive connection pooling; keep-alive via cron |
+| **NeonDB cold start** | ~~2-5s first query after idle~~ | Eliminated — D1 has no cold start (native binding) |
 | **Cloudflare outage** | API + engine down | Desktop app works offline; status page monitoring |
 | **Protocol update by WhatsApp** | Engine breaks | Active monitoring, community patches, version detection |
 | **Media size limits** | Large files rejected | Pre-upload validation, chunked upload for R2 |
@@ -1041,7 +1078,8 @@ bun run format
 - [ ] Monorepo scaffold (Bun + Turborepo + Biome)
 - [ ] `packages/shared` — types, events, error codes
 - [ ] `packages/validators` — Valibot schemas
-- [ ] `packages/db` — Drizzle schema + NeonDB client + migrations
+- [ ] `packages/db` — Drizzle schema (sqlite-core) + D1 client + migrations
+- [ ] D1 Control Plane database setup
 - [ ] Basic CI (typecheck, lint, test)
 
 ### Phase 2: Engine (Week 3-5)
@@ -1065,13 +1103,14 @@ bun run format
 
 ### Phase 4: Dashboard (Week 7-9)
 - [ ] `packages/ui` — Shared React components (shadcn/ui)
-- [ ] `apps/dashboard` — Astro 6 + @astrojs/cloudflare
-- [ ] Login/auth pages
-- [ ] Session management (create, QR scan, status)
-- [ ] Message view (conversation list, chat)
+- [ ] `apps/dashboard` — TanStack Start + @cloudflare/vite-plugin
+- [ ] Login/auth pages (better-auth, session cookies)
+- [ ] Session management (create, QR scan, status) via server functions
+- [ ] Message view (conversation list, chat) with TanStack Query
 - [ ] Webhook management
 - [ ] API key management
 - [ ] Tenant settings
+- [ ] Real-time via DO WebSocket hook
 
 ### Phase 5: Desktop (Week 9-11)
 - [ ] `apps/desktop` — Electron scaffold
@@ -1113,7 +1152,7 @@ bun run format
 # Root package.json scripts
 bun run dev              # Start all (portless proxy + turbo dev)
 bun run dev:api          # API worker only (wrangler dev)
-bun run dev:dashboard    # Astro dashboard only
+bun run dev:dashboard    # TanStack Start dashboard (vite dev)
 bun run dev:desktop      # Electron app
 bun run build            # Build all packages
 bun run deploy           # Deploy workers + pages to CF
@@ -1124,7 +1163,7 @@ bun run lint             # Biome lint
 bun run format           # Biome format
 bun run test             # Run all tests
 bun run db:generate      # Generate Drizzle migration
-bun run db:migrate       # Run migrations
+bun run db:migrate       # Run migrations on all D1 databases
 bun run db:studio        # Open Drizzle Studio
 bun run build:desktop    # Build Electron for distribution
 ```
