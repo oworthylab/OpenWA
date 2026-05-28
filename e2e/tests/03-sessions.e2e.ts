@@ -6,6 +6,7 @@
  * - Listing sessions
  * - Getting session details
  * - Starting sessions (triggers QR generation)
+ * - Pairing code authentication (phone number linking)
  * - Stopping sessions
  * - Deleting sessions
  * - Duplicate session name handling
@@ -119,6 +120,61 @@ describe('Session Management', () => {
             if (res.status === 200) {
                 // QR response has qrCode field
                 expect(res.data).toHaveProperty('qrCode');
+            }
+        });
+    });
+
+    describe('POST /api/sessions/:id/pairing-code (Pairing Code Auth)', () => {
+        let pairingSessionId: string;
+
+        beforeAll(async () => {
+            const res = await client.createSession({ name: `pairing-test-${Date.now()}` });
+            expect(res.status).toBe(201);
+            pairingSessionId = res.data.id;
+            // Start session first (pairing code requires an active session)
+            await client.startSession(pairingSessionId);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        });
+
+        it('should request pairing code with valid phone number', async () => {
+            const res = await client.getSessionPairingCode(pairingSessionId, {
+                phoneNumber: '+1234567890',
+            });
+            // Should return a pairing code or indicate session state issue
+            expect([200, 201, 400, 409]).toContain(res.status);
+            if (res.status === 200 || res.status === 201) {
+                expect(res.data).toHaveProperty('pairingCode');
+                // Pairing code is typically 8 alphanumeric characters
+                expect(typeof res.data.pairingCode).toBe('string');
+                expect(res.data.pairingCode.length).toBeGreaterThan(0);
+            }
+        });
+
+        it('should reject pairing code without phone number', async () => {
+            const res = await client.getSessionPairingCode(pairingSessionId, {
+                phoneNumber: '',
+            });
+            expect([400, 422]).toContain(res.status);
+        });
+
+        it('should reject pairing code with invalid phone format', async () => {
+            const res = await client.getSessionPairingCode(pairingSessionId, {
+                phoneNumber: 'not-a-phone',
+            });
+            expect([400, 422]).toContain(res.status);
+        });
+
+        it('should return 404 for non-existent session', async () => {
+            const res = await client.getSessionPairingCode('non-existent', {
+                phoneNumber: '+1234567890',
+            });
+            expect(res.status).toBe(404);
+        });
+
+        afterAll(async () => {
+            if (pairingSessionId) {
+                await client.stopSession(pairingSessionId);
+                await client.deleteSession(pairingSessionId);
             }
         });
     });
