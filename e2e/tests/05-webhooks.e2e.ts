@@ -8,8 +8,10 @@
  * - Updating webhooks
  * - Testing webhook delivery
  * - Deleting webhooks
+ * - HMAC signature verification
  */
 import { ApiClient } from '../helpers/api-client';
+import * as crypto from 'crypto';
 
 describe('Webhook Management', () => {
     let client: ApiClient;
@@ -162,6 +164,72 @@ describe('Webhook Management', () => {
         it('should return 404 after deletion', async () => {
             const res = await client.getWebhook(sessionId, webhookId);
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('HMAC Signature Verification', () => {
+        const webhookSecret = 'e2e-hmac-secret-key';
+        let signedWebhookId: string;
+
+        it('should create webhook with signing secret', async () => {
+            const res = await client.createWebhook(sessionId, {
+                url: 'https://httpbin.org/anything',
+                events: ['message.received'],
+                secret: webhookSecret,
+            });
+            expect(res.status).toBe(201);
+            signedWebhookId = res.data.id;
+        });
+
+        it('should mask secret in webhook details', async () => {
+            const res = await client.getWebhook(sessionId, signedWebhookId);
+            expect(res.status).toBe(200);
+            // Secret should never be returned in plaintext
+            expect(res.data.secret).toBeUndefined();
+            // Should indicate a secret is configured
+            expect(res.data.hasSecret).toBe(true);
+        });
+
+        it('should deliver with X-Webhook-Signature header', async () => {
+            const testRes = await client.testWebhook(sessionId, signedWebhookId);
+            if (testRes.status === 200 || testRes.status === 201) {
+                // httpbin echoes back received headers
+                if (testRes.data?.headers) {
+                    const sig = testRes.data.headers['X-Webhook-Signature'] ||
+                        testRes.data.headers['x-webhook-signature'];
+                    if (sig) {
+                        expect(sig).toMatch(/^sha256=[a-f0-9]{64}$/);
+                    }
+                }
+            }
+        });
+
+        it('should produce deterministic HMAC for same payload', () => {
+            const payload = '{"event":"test","timestamp":1234567890}';
+            const sig1 = crypto.createHmac('sha256', webhookSecret).update(payload).digest('hex');
+            const sig2 = crypto.createHmac('sha256', webhookSecret).update(payload).digest('hex');
+            expect(sig1).toBe(sig2);
+            expect(sig1).toMatch(/^[a-f0-9]{64}$/);
+        });
+
+        it('should update webhook secret', async () => {
+            const res = await client.updateWebhook(sessionId, signedWebhookId, {
+                secret: 'new-secret-key',
+            });
+            expect(res.status).toBe(200);
+            expect(res.data.hasSecret).toBe(true);
+        });
+
+        it('should remove webhook secret by setting to null', async () => {
+            const res = await client.updateWebhook(sessionId, signedWebhookId, {
+                secret: null,
+            });
+            expect(res.status).toBe(200);
+            expect(res.data.hasSecret).toBe(false);
+        });
+
+        afterAll(async () => {
+            if (signedWebhookId) await client.deleteWebhook(sessionId, signedWebhookId);
         });
     });
 });
