@@ -341,6 +341,115 @@ export class ApiClient {
         return this.client.post(`/plugins/${id}/disable`);
     }
 
+    // Tenant endpoints
+    async createTenant(data: { name: string; slug: string; plan?: string }): Promise<AxiosResponse> {
+        return this.client.post('/tenants', data);
+    }
+
+    async getTenant(id: string): Promise<AxiosResponse> {
+        return this.client.get(`/tenants/${id}`);
+    }
+
+    async getCurrentTenant(): Promise<AxiosResponse> {
+        return this.client.get('/tenant');
+    }
+
+    async updateTenant(id: string, data: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.put(`/tenants/${id}`, data);
+    }
+
+    async deleteTenant(id: string): Promise<AxiosResponse> {
+        return this.client.delete(`/tenants/${id}`);
+    }
+
+    async listTenants(): Promise<AxiosResponse> {
+        return this.client.get('/tenants');
+    }
+
+    async createTenantApiKey(tenantId: string, data: { name: string; role?: string }): Promise<AxiosResponse> {
+        return this.client.post(`/tenants/${tenantId}/api-keys`, data);
+    }
+
+    // CRM endpoints
+    async listCrmContacts(params?: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.get('/crm/contacts', { params });
+    }
+
+    async createCrmContact(data: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.post('/crm/contacts', data);
+    }
+
+    async getCrmContact(id: string): Promise<AxiosResponse> {
+        return this.client.get(`/crm/contacts/${id}`);
+    }
+
+    async updateCrmContact(id: string, data: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.put(`/crm/contacts/${id}`, data);
+    }
+
+    async deleteCrmContact(id: string): Promise<AxiosResponse> {
+        return this.client.delete(`/crm/contacts/${id}`);
+    }
+
+    async importCrmContacts(data: { contacts: Record<string, unknown>[] }): Promise<AxiosResponse> {
+        return this.client.post('/crm/contacts/import', data);
+    }
+
+    async listCrmConversations(params?: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.get('/crm/conversations', { params });
+    }
+
+    async getCrmConversation(id: string): Promise<AxiosResponse> {
+        return this.client.get(`/crm/conversations/${id}`);
+    }
+
+    async updateCrmConversation(id: string, data: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.put(`/crm/conversations/${id}`, data);
+    }
+
+    async listCrmTags(): Promise<AxiosResponse> {
+        return this.client.get('/crm/tags');
+    }
+
+    async createCrmTag(data: { name: string; color?: string }): Promise<AxiosResponse> {
+        return this.client.post('/crm/tags', data);
+    }
+
+    async deleteCrmTag(id: string): Promise<AxiosResponse> {
+        return this.client.delete(`/crm/tags/${id}`);
+    }
+
+    // Plan & Rate Limit endpoints
+    async getTenantPlan(): Promise<AxiosResponse> {
+        return this.client.get('/tenant/plan');
+    }
+
+    async getTenantUsage(): Promise<AxiosResponse> {
+        return this.client.get('/tenant/usage');
+    }
+
+    // Media endpoints
+    async uploadMedia(sessionId: string, data: FormData | Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.post(`/sessions/${sessionId}/media/upload`, data);
+    }
+
+    async getMedia(sessionId: string, mediaId: string): Promise<AxiosResponse> {
+        return this.client.get(`/sessions/${sessionId}/media/${mediaId}`);
+    }
+
+    async deleteMedia(sessionId: string, mediaId: string): Promise<AxiosResponse> {
+        return this.client.delete(`/sessions/${sessionId}/media/${mediaId}`);
+    }
+
+    async getMediaUrl(sessionId: string, mediaId: string): Promise<AxiosResponse> {
+        return this.client.get(`/sessions/${sessionId}/media/${mediaId}/url`);
+    }
+
+    // Pairing code endpoint
+    async getSessionPairingCode(id: string, data: { phoneNumber: string }): Promise<AxiosResponse> {
+        return this.client.post(`/sessions/${id}/pairing-code`, data);
+    }
+
     // Raw request for custom calls
     async get(path: string, config?: Record<string, unknown>): Promise<AxiosResponse> {
         return this.client.get(path, config);
@@ -352,6 +461,10 @@ export class ApiClient {
 
     async put(path: string, data?: unknown, config?: Record<string, unknown>): Promise<AxiosResponse> {
         return this.client.put(path, data, config);
+    }
+
+    async patch(path: string, data?: unknown, config?: Record<string, unknown>): Promise<AxiosResponse> {
+        return this.client.patch(path, data, config);
     }
 
     async delete(path: string, config?: Record<string, unknown>): Promise<AxiosResponse> {
