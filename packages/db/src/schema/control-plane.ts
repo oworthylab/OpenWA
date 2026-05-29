@@ -248,6 +248,191 @@ export const webhooksRelations = relations(webhooks, ({ one }) => ({
   session: one(sessions, { fields: [webhooks.sessionId], references: [sessions.id] }),
 }));
 
+// -------------------- CRM contacts (Sprint 7, US-051) --------------------
+// First-class CRM contacts (distinct from the per-session WhatsApp contact
+// table in tenant.ts). Created by manual entry, import, or sync from Mart.
+export const crmContacts = sqliteTable(
+  'crm_contacts',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    phoneNumber: text('phone_number').notNull(), // E.164
+    name: text('name'),
+    email: text('email'),
+    waJid: text('wa_jid'),
+    /** Free-form attributes: shipping address, lifetime value, etc. */
+    metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
+    /** Sourced from Mart customer.created. Null when manually entered. */
+    martCustomerId: text('mart_customer_id'),
+    /** Set when the contact has sent STOP / UNSUBSCRIBE on WhatsApp. */
+    optedOutAt: optionalTs('opted_out_at'),
+    createdAt: ts('created_at'),
+    updatedAt: ts('updated_at'),
+  },
+  (t) => ({
+    tenantPhoneIdx: uniqueIndex('crm_contacts_tenant_phone_idx').on(t.tenantId, t.phoneNumber),
+    tenantIdx: index('crm_contacts_tenant_idx').on(t.tenantId),
+    martCustomerIdx: index('crm_contacts_mart_customer_idx').on(t.tenantId, t.martCustomerId),
+  }),
+);
+
+export const crmTags = sqliteTable(
+  'crm_tags',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('#1f6feb'),
+    createdAt: ts('created_at'),
+  },
+  (t) => ({
+    tenantNameIdx: uniqueIndex('crm_tags_tenant_name_idx').on(t.tenantId, t.name),
+  }),
+);
+
+export const crmContactTags = sqliteTable(
+  'crm_contact_tags',
+  {
+    contactId: text('contact_id')
+      .notNull()
+      .references(() => crmContacts.id, { onDelete: 'cascade' }),
+    tagId: text('tag_id')
+      .notNull()
+      .references(() => crmTags.id, { onDelete: 'cascade' }),
+    createdAt: ts('created_at'),
+  },
+  (t) => ({
+    pk: uniqueIndex('crm_contact_tags_pk').on(t.contactId, t.tagId),
+    tagIdx: index('crm_contact_tags_tag_idx').on(t.tagId),
+  }),
+);
+
+// -------------------- conversations (Sprint 7, US-052) --------------------
+export const conversations = sqliteTable(
+  'conversations',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    contactId: text('contact_id')
+      .notNull()
+      .references(() => crmContacts.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id'),
+    status: text('status', { enum: ['open', 'pending', 'resolved', 'closed'] })
+      .notNull()
+      .default('open'),
+    /** User id (operator). Null when unassigned. */
+    assigneeUserId: text('assignee_user_id'),
+    lastMessageAt: optionalTs('last_message_at'),
+    createdAt: ts('created_at'),
+    updatedAt: ts('updated_at'),
+  },
+  (t) => ({
+    tenantStatusIdx: index('conversations_tenant_status_idx').on(t.tenantId, t.status),
+    tenantContactIdx: uniqueIndex('conversations_tenant_contact_idx').on(t.tenantId, t.contactId),
+    assigneeIdx: index('conversations_assignee_idx').on(t.assigneeUserId),
+  }),
+);
+
+// -------------------- message templates (Sprint 7, US-054) --------------------
+export const messageTemplates = sqliteTable(
+  'message_templates',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    body: text('body').notNull(),
+    /** Detected `{{var}}` placeholders, cached at write time. */
+    variables: text('variables', { mode: 'json' }).$type<string[]>().notNull(),
+    createdAt: ts('created_at'),
+    updatedAt: ts('updated_at'),
+  },
+  (t) => ({
+    tenantNameIdx: uniqueIndex('message_templates_tenant_name_idx').on(t.tenantId, t.name),
+  }),
+);
+
+// -------------------- Mart integration (Sprint 7, US-053) --------------------
+export const martIntegrations = sqliteTable(
+  'mart_integrations',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    storeUrl: text('store_url').notNull(),
+    /** sha256(shared secret) — never stored in plaintext. */
+    secretHash: text('secret_hash').notNull(),
+    status: text('status', { enum: ['active', 'pending', 'revoked'] })
+      .notNull()
+      .default('active'),
+    /** Free-form attributes returned by the Mart verify endpoint. */
+    storeMetadata: text('store_metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
+    lastSyncAt: optionalTs('last_sync_at'),
+    linkedAt: ts('linked_at'),
+    revokedAt: optionalTs('revoked_at'),
+  },
+  (t) => ({
+    tenantIdx: uniqueIndex('mart_integrations_tenant_idx').on(t.tenantId),
+  }),
+);
+
+// -------------------- abandoned carts (Sprint 7, US-055) --------------------
+export const abandonedCarts = sqliteTable(
+  'abandoned_carts',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    contactId: text('contact_id').references(() => crmContacts.id, { onDelete: 'set null' }),
+    cartId: text('cart_id').notNull(),
+    totalAmountCents: integer('total_amount_cents').notNull().default(0),
+    currency: text('currency').notNull().default('USD'),
+    abandonedAt: ts('abandoned_at'),
+    reminderSentAt: optionalTs('reminder_sent_at'),
+    recoveredAt: optionalTs('recovered_at'),
+    createdAt: ts('created_at'),
+  },
+  (t) => ({
+    tenantCartIdx: uniqueIndex('abandoned_carts_tenant_cart_idx').on(t.tenantId, t.cartId),
+    tenantIdx: index('abandoned_carts_tenant_idx').on(t.tenantId),
+  }),
+);
+
+// -------------------- CRM relations --------------------
+export const crmContactsRelations = relations(crmContacts, ({ one, many }) => ({
+  tenant: one(tenants, { fields: [crmContacts.tenantId], references: [tenants.id] }),
+  tags: many(crmContactTags),
+  conversations: many(conversations),
+}));
+
+export const crmTagsRelations = relations(crmTags, ({ many }) => ({
+  contacts: many(crmContactTags),
+}));
+
+export const crmContactTagsRelations = relations(crmContactTags, ({ one }) => ({
+  contact: one(crmContacts, {
+    fields: [crmContactTags.contactId],
+    references: [crmContacts.id],
+  }),
+  tag: one(crmTags, { fields: [crmContactTags.tagId], references: [crmTags.id] }),
+}));
+
+export const conversationsRelations = relations(conversations, ({ one }) => ({
+  contact: one(crmContacts, {
+    fields: [conversations.contactId],
+    references: [crmContacts.id],
+  }),
+}));
+
 // -------------------- inferred types --------------------
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -263,3 +448,16 @@ export type NewWebhook = typeof webhooks.$inferInsert;
 export type AuditLogRow = typeof auditLog.$inferSelect;
 export type NewAuditLogRow = typeof auditLog.$inferInsert;
 export type UsageCounter = typeof usageCounters.$inferSelect;
+export type CrmContact = typeof crmContacts.$inferSelect;
+export type NewCrmContact = typeof crmContacts.$inferInsert;
+export type CrmTag = typeof crmTags.$inferSelect;
+export type NewCrmTag = typeof crmTags.$inferInsert;
+export type CrmContactTag = typeof crmContactTags.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+export type NewMessageTemplate = typeof messageTemplates.$inferInsert;
+export type MartIntegration = typeof martIntegrations.$inferSelect;
+export type NewMartIntegration = typeof martIntegrations.$inferInsert;
+export type AbandonedCart = typeof abandonedCarts.$inferSelect;
+export type NewAbandonedCart = typeof abandonedCarts.$inferInsert;
