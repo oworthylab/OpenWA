@@ -66,7 +66,7 @@ The dashboard is currently a client-only Vite SPA built but **never deployed**; 
 - [x] Add `API_BASE_URL` to Pages env (`<account>.workers.dev` auto-detected).
 - [x] Add GitHub Action `.github/workflows/deploy-dashboard.yml`.
 - [x] Document custom-domain steps in `docs/SELF_HOST.md`.
-- [ ] Smoke check `curl -I $URL` — **blocked**: the existing CF API token (`cfut_…`) lacks `Account → Cloudflare Pages → Edit`. Re-issue token with that scope, then re-run `./scripts/deploy-self-host.sh` to publish.
+- [x] Smoke check `curl -I $URL` — **done** (HTTP 200 on `/`, `/sessions`, `/api/health` proxied to worker).
 
 ### 3. Authentication (US-068, 3 pts)
 
@@ -138,7 +138,11 @@ The dashboard is currently a client-only Vite SPA built but **never deployed**; 
 - `scripts/deploy-self-host.sh` ships dashboard alongside `openwa-api` + `openwa-engine`.
 - `.github/workflows/deploy-dashboard.yml` automates per-push deploys.
 - `docs/SELF_HOST.md` documents the dashboard URL + custom-domain flow.
-- **Live deploy blocked**: existing CF token `cfut_…d8c7384f` returns auth error on the Pages API (`Account → Cloudflare Pages → Edit` permission missing). Re-issue the token with that scope and re-run `./scripts/deploy-self-host.sh` to publish to `https://openwa-dashboard.pages.dev`.
+- **Live**: deployed to `https://openwa-dashboard-b34.pages.dev/` (CF account `ktisakib@gmail.com`).
+  - `/` (SPA) → 200
+  - `/sessions` (SPA fallback via `_redirects`) → 200
+  - `/api/health` (Pages Function → `openwa-api`) → 200, returns `{"status":"ok","service":"openwa-api"}`
+  - Pages var `API_BASE_URL=https://openwa-api.ktisakib.workers.dev` set on production + preview.
 - Full TanStack Start migration tracked as **Sprint 11** (US-066R).
 
 ---
