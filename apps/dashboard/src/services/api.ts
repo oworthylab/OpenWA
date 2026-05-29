@@ -172,7 +172,19 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     return undefined as T;
   }
 
-  return response.json();
+  const payload = await response.json();
+  // Serverless API wraps list/detail responses in `{ data, meta? }`.
+  // Unwrap so callers (and the legacy types) receive the raw value.
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    'data' in payload &&
+    Object.keys(payload).every(k => k === 'data' || k === 'meta' || k === 'pagination')
+  ) {
+    return (payload as { data: T }).data;
+  }
+  return payload as T;
 }
 
 // =============================================================================

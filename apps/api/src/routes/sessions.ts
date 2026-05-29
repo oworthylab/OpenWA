@@ -98,6 +98,37 @@ export function sessionRoutes(env: ApiEnv) {
         .orderBy(asc(sessions.createdAt));
       return Response.json({ data: rows.map(serializeSession) });
     })
+    // -------- GET /v1/sessions/stats/overview --------
+    // Dashboard summary card. Returns counts grouped by status so the
+    // SPA can render "active / ready / disconnected" without paging
+    // through every row. Must come BEFORE the `/:id` route below so
+    // Elysia doesn't match `id = "stats"`.
+    .get('/stats/overview', async ({ auth }) => {
+      if (!env.CONTROL_PLANE_DB) throw internal('CONTROL_PLANE_DB missing');
+      const db = getControlPlaneDB(env.CONTROL_PLANE_DB);
+      const rows = await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.tenantId, auth.tenantId));
+      const byStatus: Record<string, number> = {};
+      for (const r of rows) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+      const ready = byStatus.ready ?? 0;
+      const active =
+        (byStatus.ready ?? 0) +
+        (byStatus.connecting ?? 0) +
+        (byStatus.initializing ?? 0) +
+        (byStatus.qr_required ?? 0) +
+        (byStatus.qr_ready ?? 0);
+      const disconnected = (byStatus.disconnected ?? 0) + (byStatus.stopped ?? 0);
+      return Response.json({
+        total: rows.length,
+        active,
+        ready,
+        disconnected,
+        byStatus,
+        memoryUsage: { heapUsed: 0, heapTotal: 0, rss: 0 },
+      });
+    })
     .get('/:id', async ({ params, auth }) => {
       const row = await loadSession(env, auth, params.id);
       const engine = new EngineClient(env.ENGINE);
