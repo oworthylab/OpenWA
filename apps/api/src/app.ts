@@ -13,8 +13,10 @@ import { auditRoutes } from './routes/audit.js';
 import { authRoutes } from './routes/auth.js';
 import { billingRoutes } from './routes/billing.js';
 import { contactRoutes } from './routes/contacts.js';
+import { crmRoutes } from './routes/crm.js';
 import { groupRoutes } from './routes/groups.js';
 import { healthRoutes } from './routes/health.js';
+import { martRoutes } from './routes/mart.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { webhookRoutes } from './routes/webhooks.js';
 
@@ -72,6 +74,8 @@ export function buildApp(env: ApiEnv) {
     .use(webhookRoutes(env))
     .use(contactRoutes(env))
     .use(groupRoutes(env))
+    .use(crmRoutes(env))
+    .use(martRoutes(env))
     .use(auditRoutes(env))
     .all('*', () => {
       throw unauthorized('Unknown route', 'NOT_FOUND');
