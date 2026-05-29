@@ -20,6 +20,7 @@ import { crmRoutes } from './routes/crm.js';
 import { docsRoutes } from './routes/docs.js';
 import { groupRoutes } from './routes/groups.js';
 import { healthRoutes } from './routes/health.js';
+import { internalRoutes } from './routes/internal.js';
 import { labelRoutes } from './routes/labels.js';
 import { martRoutes } from './routes/mart.js';
 import { pluginRoutes } from './routes/plugins.js';
@@ -122,6 +123,7 @@ export function buildApp(env: ApiEnv) {
       }
     })
     .use(healthRoutes(env))
+    .use(internalRoutes(env))
     .use(authRoutes(env))
     .use(billingRoutes(env))
     .use(sessionRoutes(env))

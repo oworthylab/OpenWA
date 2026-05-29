@@ -50,7 +50,11 @@ const PLAN_CACHE_TTL = 60; // seconds
  * Returns true when the path is exempt from rate limiting.
  */
 export function isExemptPath(pathname: string): boolean {
-  return pathname.startsWith('/health') || pathname.startsWith('/docs');
+  return (
+    pathname.startsWith('/health') ||
+    pathname.startsWith('/docs') ||
+    pathname.startsWith('/v1/internal/')
+  );
 }
 
 /**

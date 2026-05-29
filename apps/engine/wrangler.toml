@@ -32,3 +32,11 @@ class_name = "WhatsAppSessionDO"
 [[env.self-host.migrations]]
 tag = "v1"
 new_sqlite_classes = ["WhatsAppSessionDO"]
+
+# Bridge sidecar — set BRIDGE_URL via `wrangler secret put` (per env) and
+# BRIDGE_TOKEN via secret too. When unset, the worker falls back to the DO.
+# Example:
+#   wrangler secret put BRIDGE_URL --env self-host
+#   wrangler secret put BRIDGE_TOKEN --env self-host
+[env.self-host.vars]
+# placeholder — real value is a wrangler secret (see scripts/deploy-self-host.sh)

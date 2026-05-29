@@ -18,6 +18,10 @@ import { CONNECTION_STATES, ConnectionStateMachine } from '../../state/index.js'
 import { DOStorage } from './storage.js';
 
 interface Env {
+  /** Optional Node sidecar URL (e.g. https://wa-bridge.example.com). */
+  BRIDGE_URL?: string;
+  /** Bearer token the bridge requires (must match BRIDGE_TOKEN there). */
+  BRIDGE_TOKEN?: string;
   // Bindings will be injected by `apps/engine/wrangler.toml` in later sprints.
   [key: string]: unknown;
 }

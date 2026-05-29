@@ -49,6 +49,8 @@ export interface ApiEnv {
    * Format MUST match `openwa_<8>_<32>` (see `lib/crypto.ts`).
    */
   SELF_HOST_ADMIN_API_KEY?: string;
+  /** HMAC secret shared with @openwa/wa-bridge for /v1/internal/engine-events. */
+  BRIDGE_WEBHOOK_SECRET?: string;
 }
 
 export interface WebhookQueueMessage {

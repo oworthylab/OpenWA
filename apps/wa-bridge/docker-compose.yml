@@ -1,0 +1,31 @@
+# Dedicated compose file for the wa-bridge sidecar.
+# Bring up with:
+#   BRIDGE_TOKEN=... BRIDGE_WEBHOOK_SECRET=... \
+#   docker compose -f apps/wa-bridge/docker-compose.yml up -d
+
+services:
+  wa-bridge:
+    build:
+      context: ../..
+      dockerfile: apps/wa-bridge/Dockerfile
+    container_name: openwa-wa-bridge
+    ports:
+      - '127.0.0.1:3001:3001'
+    environment:
+      BRIDGE_TOKEN: ${BRIDGE_TOKEN:?BRIDGE_TOKEN is required}
+      BRIDGE_WEBHOOK_URL: ${BRIDGE_WEBHOOK_URL:-}
+      BRIDGE_WEBHOOK_SECRET: ${BRIDGE_WEBHOOK_SECRET:-dev-secret-change-me}
+      BRIDGE_AUTH_DIR: /data/wa-auth
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - wa_auth:/data/wa-auth
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  wa_auth:

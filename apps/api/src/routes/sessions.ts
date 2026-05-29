@@ -198,7 +198,11 @@ export function sessionRoutes(env: ApiEnv) {
     .get('/:id/qr', async ({ params, auth }) => {
       const row = await loadSession(env, auth, params.id);
       const engine = requireEngine(env);
-      const qr = await engine.qr(row.id);
+      const qr = (await engine.qr(row.id)) as {
+        qr: string | null;
+        ts?: number | null;
+        state?: string;
+      };
       if (!qr.qr) {
         throw new ApiError({
           status: 409,
@@ -206,7 +210,11 @@ export function sessionRoutes(env: ApiEnv) {
           message: 'No QR available — session is not waiting to be paired',
         });
       }
-      return Response.json(qr);
+      return Response.json({
+        qrCode: qr.qr,
+        status: qr.state ?? row.status,
+        generatedAt: qr.ts ?? null,
+      });
     })
     .post(
       '/:id/messages/text',
