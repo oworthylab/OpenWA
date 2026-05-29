@@ -7,6 +7,7 @@
 import { Elysia } from 'elysia';
 import type { ApiEnv } from './env.js';
 import { ApiError, internal, notFound, unauthorized } from './errors.js';
+import { bootstrapSelfHost, isSelfHostEnabled } from './lib/self-host.js';
 import { SentryReporter } from './lib/sentry.js';
 import { authenticate } from './middleware/auth.js';
 import { beginRequest, completeRequest, getLogger } from './middleware/logging.js';
@@ -105,6 +106,11 @@ export function buildApp(env: ApiEnv) {
     .onBeforeHandle(async ({ request, set }) => {
       const url = new URL(request.url);
       if (isExemptPath(url.pathname)) return;
+      // Self-host mode: ensure default tenant + admin key are present
+      // before any auth lookup happens.
+      if (isSelfHostEnabled(env)) {
+        await bootstrapSelfHost(env);
+      }
       // Skip rate limiting on unauthenticated requests — auth will fail later
       // with a clearer error than a 429.
       const header = request.headers.get('x-api-key') ?? request.headers.get('authorization');

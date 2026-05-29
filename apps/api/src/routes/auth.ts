@@ -33,6 +33,7 @@ import {
   verifyPassword,
   verifyVerificationToken,
 } from '../lib/password.js';
+import { isSelfHostEnabled } from '../lib/self-host.js';
 
 const REGISTRATION_IP_LIMIT = 5;
 const REGISTRATION_IP_WINDOW_SECONDS = 60 * 60;
@@ -83,6 +84,14 @@ export function authRoutes(env: ApiEnv) {
     new Elysia({ aot: false, prefix: '/v1/auth' })
       // -------- POST /v1/auth/register --------
       .post('/register', async ({ body, request }) => {
+        if (isSelfHostEnabled(env)) {
+          throw new ApiError({
+            status: 403,
+            code: ERROR_CODES.SELF_HOST_REGISTRATION_DISABLED,
+            message:
+              'Self-host mode is enabled; tenant registration is disabled. Use the pre-provisioned admin API key.',
+          });
+        }
         const parsed = v.safeParse(RegisterSchema, body);
         if (!parsed.success) throw validationFailed(parsed.issues);
         await enforceIpRateLimit(env, clientIp(request));
