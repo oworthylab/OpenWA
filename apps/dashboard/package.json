@@ -1,0 +1,22 @@
+{
+  "name": "@openwa/dashboard",
+  "version": "0.0.1",
+  "description": "OpenWA Dashboard — TanStack Start (Sprint 4). Stub in Sprint 1.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "echo 'dashboard stub — implementation in Sprint 4'",
+    "dev": "echo 'dashboard stub — implementation in Sprint 4'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'no tests yet'",
+    "lint": "biome check src",
+    "clean": "rm -rf dist .turbo build *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@openwa/shared": "workspace:*",
+    "@openwa/validators": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
