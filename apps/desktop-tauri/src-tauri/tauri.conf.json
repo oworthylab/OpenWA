@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenWA",
+  "version": "0.1.0",
+  "identifier": "com.openwa.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../src",
+    "devUrl": null
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OpenWA",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": ["resources/*"],
+    "category": "SocialNetworking",
+    "shortDescription": "Chat with WhatsApp on your desktop, powered by OpenWA",
+    "longDescription": "OpenWA is a fully local desktop WhatsApp client. Scan a QR with your phone, then send and receive messages right from your computer. No cloud, no Docker, no command line."
+  },
+  "plugins": {}
+}

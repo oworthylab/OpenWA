@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenWA</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="logo">WA</div>
+        <div class="title">OpenWA</div>
+      </header>
+
+      <section class="sessions">
+        <div class="section-head">
+          <h2>Accounts</h2>
+          <button id="new-session" class="ghost" title="Add WhatsApp account">+</button>
+        </div>
+        <ul id="session-list"></ul>
+      </section>
+
+      <footer class="status">
+        <span id="bridge-dot" class="dot warn"></span>
+        <span id="bridge-state">starting bridge…</span>
+        <button id="open-logs" class="ghost" title="Open logs folder">⓵</button>
+      </footer>
+    </aside>
+
+    <main class="content">
+      <!-- Empty state -->
+      <section id="view-empty" class="view">
+        <div class="empty">
+          <div class="empty-icon">📱</div>
+          <h1>Welcome to OpenWA</h1>
+          <p>Click <strong>+</strong> in the sidebar to link a WhatsApp account.</p>
+        </div>
+      </section>
+
+      <!-- QR / pairing screen -->
+      <section id="view-qr" class="view" hidden>
+        <header class="topbar">
+          <h2 id="qr-session-name">New account</h2>
+          <span id="qr-state-pill" class="pill">connecting…</span>
+        </header>
+        <div class="qr-stage">
+          <div class="qr-card">
+            <div class="qr-frame">
+              <img id="qr-img" alt="WhatsApp QR" />
+              <div id="qr-loading" class="qr-loading">Generating QR…</div>
+            </div>
+            <ol class="qr-steps">
+              <li>Open <strong>WhatsApp</strong> on your phone.</li>
+              <li>Tap <strong>⋮ → Linked devices → Link a device</strong>.</li>
+              <li>Point your phone at this screen.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- Chat screen -->
+      <section id="view-chat" class="view" hidden>
+        <header class="topbar">
+          <h2 id="chat-session-name">Connected</h2>
+          <div class="actions">
+            <button id="chat-disconnect" class="ghost">Disconnect</button>
+            <button id="chat-logout" class="danger ghost">Unlink</button>
+          </div>
+        </header>
+        <div class="chat-pane">
+          <div class="conv-list" id="conv-list">
+            <div class="hint">Conversations will appear here as messages arrive.</div>
+          </div>
+          <div class="conv-view">
+            <header class="conv-head">
+              <input
+                id="to-input"
+                type="text"
+                placeholder="Phone number with country code (e.g. 14155550123)"
+              />
+            </header>
+            <div id="message-list" class="message-list"></div>
+            <footer class="composer">
+              <textarea id="msg-input" rows="2" placeholder="Type a message…"></textarea>
+              <button id="msg-send">Send</button>
+            </footer>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

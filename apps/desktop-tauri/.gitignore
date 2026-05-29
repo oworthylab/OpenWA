@@ -1,0 +1,11 @@
+node_modules/
+src-tauri/target/
+src-tauri/resources/node/
+src-tauri/resources/node_modules/
+src-tauri/resources/bridge.cjs
+src-tauri/resources/package.json
+src-tauri/icons/*.png
+src-tauri/icons/*.ico
+src-tauri/icons/*.icns
+.DS_Store
+src-tauri/resources/package-lock.json

@@ -1,0 +1,19 @@
+{
+  "name": "@openwa/desktop-tauri",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenWA — Tauri desktop app. One install, click Connect, scan QR, chat. No Docker, no cloud, no command line.",
+  "scripts": {
+    "prepare:bridge": "node scripts/bundle-bridge.mjs",
+    "prepare:node": "node scripts/fetch-node.mjs",
+    "prepare:icons": "node scripts/make-icons.mjs",
+    "prepare:all": "npm run prepare:bridge && npm run prepare:node && npm run prepare:icons",
+    "tauri": "tauri",
+    "dev": "npm run prepare:all && tauri dev",
+    "build": "npm run prepare:all && tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "esbuild": "^0.24.0"
+  }
+}
