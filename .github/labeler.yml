@@ -1,0 +1,27 @@
+area/api:
+  - changed-files:
+      - any-glob-to-any-file: ['apps/api/**']
+area/engine:
+  - changed-files:
+      - any-glob-to-any-file: ['apps/engine/**']
+area/dashboard:
+  - changed-files:
+      - any-glob-to-any-file: ['apps/dashboard/**', 'dashboard/**']
+area/shared:
+  - changed-files:
+      - any-glob-to-any-file: ['packages/shared/**']
+area/validators:
+  - changed-files:
+      - any-glob-to-any-file: ['packages/validators/**']
+area/db:
+  - changed-files:
+      - any-glob-to-any-file: ['packages/db/**']
+area/ci:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', 'turbo.json', 'lefthook.yml']
+area/docs:
+  - changed-files:
+      - any-glob-to-any-file: ['docs/**', '**/*.md']
+area/e2e:
+  - changed-files:
+      - any-glob-to-any-file: ['e2e/**', 'e2e-frontend/**']
