@@ -64,3 +64,57 @@ name = "openwa-api-production"
 # [[env.production.services]]
 # binding = "ENGINE"
 # service = "openwa-engine"
+
+# ---------------- self-host (single-tenant) ----------------
+# Profile for operators running OpenWA on their own Cloudflare account
+# without the multi-tenant SaaS layer. Boot-time auto-provisions exactly
+# one tenant + admin API key; `/v1/auth/register` is disabled.
+#
+# Required setup (one-time):
+#   wrangler d1 create openwa-control-plane
+#   wrangler kv namespace create AUTH_CACHE
+#   wrangler queues create openwa-webhooks
+#   wrangler queues create openwa-webhooks-dlq
+#
+# Then replace the REPLACE_ME placeholders below and run:
+#   wrangler deploy --env self-host
+[env.self-host]
+name = "openwa-api"
+
+[env.self-host.vars]
+SELF_HOST_MODE = "true"
+ENVIRONMENT = "production"
+LOG_LEVEL = "info"
+# Optional: set a stable tenant id + display name. Defaults are
+# "self-host-tenant" / "Self-Host".
+SELF_HOST_TENANT_ID = "self-host-tenant"
+SELF_HOST_TENANT_NAME = "Self-Host"
+
+# Provide your own admin API key via:
+#   wrangler secret put SELF_HOST_ADMIN_API_KEY --env self-host
+# Format: openwa_<8>_<32>. If unset, the worker generates one on first
+# boot and logs it once at WARN level — copy it from Logpush.
+
+# [[env.self-host.d1_databases]]
+# binding = "CONTROL_PLANE_DB"
+# database_name = "openwa-control-plane"
+# database_id = "REPLACE_ME"
+
+# [[env.self-host.kv_namespaces]]
+# binding = "AUTH_CACHE"
+# id = "REPLACE_ME"
+
+# [[env.self-host.queues.producers]]
+# binding = "WEBHOOK_QUEUE"
+# queue = "openwa-webhooks"
+
+# [[env.self-host.queues.consumers]]
+# queue = "openwa-webhooks"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 4
+# dead_letter_queue = "openwa-webhooks-dlq"
+
+# [[env.self-host.services]]
+# binding = "ENGINE"
+# service = "openwa-engine"
