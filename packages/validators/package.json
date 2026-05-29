@@ -10,6 +10,8 @@
     ".": "./src/index.ts",
     "./auth": "./src/auth.ts",
     "./billing": "./src/billing.ts",
+    "./crm": "./src/crm.ts",
+    "./mart": "./src/mart.ts",
     "./session": "./src/session.ts",
     "./message": "./src/message.ts",
     "./webhook": "./src/webhook.ts",
