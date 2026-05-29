@@ -22,6 +22,12 @@ export interface ApiEnv {
   STRIPE_SECRET?: string;
   /** Stripe webhook signing secret (`whsec_...`). */
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Minimum log level (`debug` | `info` | `warn` | `error`). */
+  LOG_LEVEL?: string;
+  /** Sentry DSN; when unset the reporter no-ops. */
+  SENTRY_DSN?: string;
+  /** Build sha / release tag for Sentry source-map matching. */
+  SENTRY_RELEASE?: string;
 }
 
 export interface WebhookQueueMessage {
