@@ -11,6 +11,7 @@
     { "path": "./packages/engine" },
     { "path": "./apps/api" },
     { "path": "./apps/engine" },
-    { "path": "./apps/dashboard" }
+    { "path": "./apps/dashboard" },
+    { "path": "./apps/desktop" }
   ]
 }

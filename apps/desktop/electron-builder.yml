@@ -1,0 +1,45 @@
+# electron-builder configuration for @openwa/desktop
+# Sprint 5 scaffold — release pipeline + code signing wire-up lands in Sprint 6.
+
+appId: dev.openwa.desktop
+productName: OpenWA Desktop
+copyright: Copyright © OpenWA Contributors
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/*.ts'
+
+asar: true
+
+mac:
+  category: public.app-category.social-networking
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Network
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+publish:
+  - provider: github
+    owner: openwa
+    repo: openwa
+    releaseType: release

@@ -1,0 +1,38 @@
+{
+  "name": "@openwa/desktop",
+  "version": "0.0.1",
+  "description": "OpenWA Desktop — Electron app embedding the Baileys engine for local, single-user use.",
+  "type": "module",
+  "private": true,
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "echo 'desktop dev requires an Electron install; see README'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "lint": "biome check src test",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@openwa/engine": "workspace:*",
+    "@openwa/shared": "workspace:*",
+    "@openwa/validators": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.3"
+  },
+  "//": "Electron, electron-builder, electron-updater, and better-sqlite3 are declared as optional peerDependencies because they require native rebuilds that can't run in every developer environment (e.g. dev containers). Install them locally with `bun add -d electron electron-builder electron-updater better-sqlite3` before running `bun run dev`.",
+  "peerDependencies": {
+    "better-sqlite3": "^11.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "electron-updater": "^6.3.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": { "optional": true },
+    "electron": { "optional": true },
+    "electron-builder": { "optional": true },
+    "electron-updater": { "optional": true }
+  }
+}
