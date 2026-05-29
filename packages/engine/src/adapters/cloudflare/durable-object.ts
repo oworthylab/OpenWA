@@ -115,6 +115,22 @@ export class WhatsAppSessionDO implements DurableObject {
           { status: 501 },
         );
       default:
+        // Contacts (US-024) and groups (US-025) routes are accepted by the
+        // engine but require the Workers-native WA protocol to actually
+        // return data. Until then we respond with a structured 501 so the
+        // API layer can surface a deterministic error.
+        if (url.pathname.startsWith('/contacts') || url.pathname.startsWith('/groups')) {
+          return Response.json(
+            {
+              error: {
+                code: ENGINE_ERROR_CODES.NOT_IMPLEMENTED,
+                message:
+                  'Contact/group operations require the Workers-native WA protocol. Run the Node adapter for a fully functional engine.',
+              },
+            },
+            { status: 501 },
+          );
+        }
         return Response.json(
           {
             error: {
