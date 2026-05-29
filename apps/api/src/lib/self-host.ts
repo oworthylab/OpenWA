@@ -48,7 +48,21 @@ export async function bootstrapSelfHost(env: ApiEnv): Promise<void> {
     const flag = await env.AUTH_CACHE.get(KV_BOOTSTRAP_KEY);
     if (flag === '1') return;
   }
-  const db = getControlPlaneDB(env.CONTROL_PLANE_DB);
+  try {
+    await runBootstrap(env);
+    if (env.AUTH_CACHE) {
+      await env.AUTH_CACHE.put(KV_BOOTSTRAP_KEY, '1', { expirationTtl: 60 * 60 * 24 });
+    }
+  } catch (err) {
+    // Never set the KV flag on failure — next request retries.
+    getLogger(env).error('self-host.bootstrap.failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function runBootstrap(env: ApiEnv): Promise<void> {
+  const db = getControlPlaneDB(env.CONTROL_PLANE_DB as D1Database);
   const tenantId = env.SELF_HOST_TENANT_ID || DEFAULT_TENANT_ID;
   const tenantName = env.SELF_HOST_TENANT_NAME || DEFAULT_TENANT_NAME;
 
@@ -61,14 +75,17 @@ export async function bootstrapSelfHost(env: ApiEnv): Promise<void> {
     .where(eq(users.id, SYSTEM_USER_ID))
     .limit(1);
   if (!existingUser[0]) {
-    await db.insert(users).values({
-      id: SYSTEM_USER_ID,
-      email: SYSTEM_USER_EMAIL,
-      name: SYSTEM_USER_NAME,
-      emailVerifiedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
+    await db
+      .insert(users)
+      .values({
+        id: SYSTEM_USER_ID,
+        email: SYSTEM_USER_EMAIL,
+        name: SYSTEM_USER_NAME,
+        emailVerifiedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
   }
 
   // 2. Upsert tenant (insert-if-missing).
@@ -78,21 +95,27 @@ export async function bootstrapSelfHost(env: ApiEnv): Promise<void> {
     .where(eq(tenants.id, tenantId))
     .limit(1);
   if (!existing[0]) {
-    await db.insert(tenants).values({
-      id: tenantId,
-      name: tenantName,
-      slug: DEFAULT_TENANT_SLUG,
-      plan: 'enterprise',
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await db.insert(tenantMembers).values({
-      tenantId,
-      userId: SYSTEM_USER_ID,
-      role: 'owner',
-      joinedAt: now,
-    });
+    await db
+      .insert(tenants)
+      .values({
+        id: tenantId,
+        name: tenantName,
+        slug: DEFAULT_TENANT_SLUG,
+        plan: 'enterprise',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    await db
+      .insert(tenantMembers)
+      .values({
+        tenantId,
+        userId: SYSTEM_USER_ID,
+        role: 'owner',
+        joinedAt: now,
+      })
+      .run();
   }
 
   // 3. Ensure exactly one active admin key.
@@ -107,10 +130,7 @@ export async function bootstrapSelfHost(env: ApiEnv): Promise<void> {
     if (env.SELF_HOST_ADMIN_API_KEY) {
       const operatorPrefix = parseApiKeyPrefix(env.SELF_HOST_ADMIN_API_KEY);
       if (!operatorPrefix) {
-        getLogger(env).error('self-host.bootstrap', {
-          err: 'SELF_HOST_ADMIN_API_KEY format invalid; expected openwa_<8>_<32>',
-        });
-        return;
+        throw new Error('SELF_HOST_ADMIN_API_KEY format invalid; expected openwa_<8>_<32>');
       }
       plaintext = env.SELF_HOST_ADMIN_API_KEY;
       prefix = operatorPrefix;
@@ -124,19 +144,18 @@ export async function bootstrapSelfHost(env: ApiEnv): Promise<void> {
       });
     }
     const hashedKey = await sha256Hex(plaintext);
-    await db.insert(apiKeys).values({
-      id: newId(),
-      tenantId,
-      name: 'self-host-admin',
-      prefix,
-      hashedKey,
-      role: 'admin',
-      createdByUserId: SYSTEM_USER_ID,
-      createdAt: now,
-    });
-  }
-
-  if (env.AUTH_CACHE) {
-    await env.AUTH_CACHE.put(KV_BOOTSTRAP_KEY, '1', { expirationTtl: 60 * 60 * 24 });
+    await db
+      .insert(apiKeys)
+      .values({
+        id: newId(),
+        tenantId,
+        name: 'self-host-admin',
+        prefix,
+        hashedKey,
+        role: 'admin',
+        createdByUserId: SYSTEM_USER_ID,
+        createdAt: now,
+      })
+      .run();
   }
 }

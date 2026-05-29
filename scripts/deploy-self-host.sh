@@ -1,141 +1,175 @@
 #!/usr/bin/env bash
 # OpenWA — One-command self-host deploy to Cloudflare.
 #
-# Provisions a complete single-tenant deployment on a fresh Cloudflare
-# account: D1 (control plane), KV (auth cache), Queues (webhook fanout),
-# Durable Objects (engine), and two Workers (api + engine).
-#
-# Idempotent: re-running skips already-created resources.
+# Provisions D1 + KV + Queues + 2 Workers. Idempotent.
+# Uses Cloudflare REST API for resource creation (wrangler's output is
+# TTY-only and unreliable when piped), wrangler only for deploy + secrets.
 #
 # Prerequisites:
-#   1. A Cloudflare API token with these permissions, exported as
-#      CLOUDFLARE_API_TOKEN:
-#        - Workers Scripts: Edit
-#        - Workers KV Storage: Edit
-#        - D1: Edit
-#        - Queues: Edit            (requires Workers Paid plan, $5/mo)
-#        - Account Settings: Read
-#      Create at https://dash.cloudflare.com/profile/api-tokens
-#
-#   2. (Optional) CLOUDFLARE_ACCOUNT_ID — only needed if your token covers
-#      multiple accounts; wrangler will prompt otherwise.
-#
-#   3. bun + wrangler installed (handled by `bun install` at the repo root).
+#   CLOUDFLARE_API_TOKEN  (required)
+#   CLOUDFLARE_ACCOUNT_ID (optional; auto-detected from first account)
+#   SELF_HOST_ADMIN_API_KEY (optional; generated if missing)
 #
 # Usage:
-#   export CLOUDFLARE_API_TOKEN=cf_xxx...
+#   export CLOUDFLARE_API_TOKEN=cf_xxx
 #   ./scripts/deploy-self-host.sh
-#
-# Or with a pre-shared admin key:
-#   SELF_HOST_ADMIN_API_KEY=openwa_xxxxxxxx_xxxxxxxx... \
-#     ./scripts/deploy-self-host.sh
-#
-# What gets created (on the linked CF account):
-#   D1:     openwa-control-plane
-#   KV:     openwa-auth-cache
-#   Queues: openwa-webhooks, openwa-webhooks-dlq
-#   Workers: openwa-api, openwa-engine
-#
-# To tear down, see ./scripts/teardown-self-host.sh.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# ---------- 0. Sanity ----------
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   echo "ERROR: CLOUDFLARE_API_TOKEN is not set." >&2
-  echo "       Create one at https://dash.cloudflare.com/profile/api-tokens" >&2
   exit 1
 fi
 
-# Use bun's wrangler so we don't depend on a globally installed wrangler.
-WRANGLER="bunx wrangler"
+API="https://api.cloudflare.com/client/v4"
+TOKEN="$CLOUDFLARE_API_TOKEN"
 
-echo "==> Verifying Cloudflare credentials..."
-WHOAMI_OUT="$($WRANGLER whoami 2>&1)"
-echo "$WHOAMI_OUT" | grep -E "(Email|associated|account)" || true
-
-# ---------- 1. Create resources (idempotent via grep on existing list) ----------
-TOML="$REPO_ROOT/apps/api/wrangler.toml"
-PROFILE="[env.self-host]"
-
-cd "$REPO_ROOT/apps/api"
-
-# ----- D1 -----
-echo "==> Ensuring D1 database 'openwa-control-plane' exists..."
-D1_LIST="$($WRANGLER d1 list 2>&1 || true)"
-if echo "$D1_LIST" | grep -q "openwa-control-plane"; then
-  D1_ID="$(echo "$D1_LIST" | awk '/openwa-control-plane/ {print $2}' | head -1)"
-  echo "    found existing D1: $D1_ID"
+# wrangler under bun's runtime exits silently mid-deploy on node 24.
+# Force node 22 from nvm if available; fall back to bunx.
+if [[ -x "/usr/local/share/nvm/versions/node/v22.22.1/bin/node" ]]; then
+  export PATH="/usr/local/share/nvm/versions/node/v22.22.1/bin:$PATH"
+  WRANGLER="npx --yes wrangler@4"
+elif command -v node >/dev/null 2>&1 && [[ "$(node --version)" =~ ^v(20|22)\. ]]; then
+  WRANGLER="npx --yes wrangler@4"
 else
-  D1_CREATE="$($WRANGLER d1 create openwa-control-plane 2>&1)"
-  D1_ID="$(echo "$D1_CREATE" | grep -oE '"database_id":\s*"[^"]+"' | head -1 | cut -d'"' -f4)"
-  echo "    created D1: $D1_ID"
+  echo "WARNING: node 20/22 not found, falling back to bunx wrangler (may exit silently)" >&2
+  WRANGLER="bunx wrangler"
 fi
 
-# ----- KV -----
+cf() {
+  local method="$1" path="$2" body="${3:-}"
+  if [[ -n "$body" ]]; then
+    curl -sS -X "$method" "$API$path" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      --data "$body"
+  else
+    curl -sS -X "$method" "$API$path" -H "Authorization: Bearer $TOKEN"
+  fi
+}
+
+py() { python3 -c "import sys,json; d=json.load(sys.stdin); print($1)" 2>/dev/null || true; }
+
+# ---------- 0. Account ----------
+echo "==> Verifying Cloudflare credentials..."
+if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+  CLOUDFLARE_ACCOUNT_ID="$(cf GET /accounts | py "d['result'][0]['id']")"
+fi
+ACCT="$CLOUDFLARE_ACCOUNT_ID"
+ACCT_NAME="$(cf GET "/accounts/$ACCT" | py "d['result']['name']")"
+export CLOUDFLARE_ACCOUNT_ID="$ACCT"
+echo "    account: $ACCT_NAME ($ACCT)"
+
+# ---------- 1. D1 ----------
+echo "==> Ensuring D1 database 'openwa-control-plane' exists..."
+D1_LIST="$(cf GET "/accounts/$ACCT/d1/database?name=openwa-control-plane")"
+D1_ID="$(echo "$D1_LIST" | py "next((x['uuid'] for x in d['result'] if x['name']=='openwa-control-plane'), '')")"
+if [[ -z "$D1_ID" ]]; then
+  CREATE="$(cf POST "/accounts/$ACCT/d1/database" '{"name":"openwa-control-plane"}')"
+  D1_ID="$(echo "$CREATE" | py "d['result']['uuid']")"
+  [[ -z "$D1_ID" ]] && { echo "FAILED to create D1:"; echo "$CREATE"; exit 1; }
+  echo "    created D1: $D1_ID"
+else
+  echo "    found D1: $D1_ID"
+fi
+
+# ---------- 2. KV ----------
 echo "==> Ensuring KV namespace 'openwa-auth-cache' exists..."
-KV_LIST="$($WRANGLER kv namespace list 2>&1 || true)"
-KV_ID="$(echo "$KV_LIST" | python3 -c "
-import json, sys
-try:
-    data = json.loads(sys.stdin.read())
-    for ns in data:
-        if ns.get('title') in ('openwa-auth-cache', 'openwa-api-AUTH_CACHE'):
-            print(ns['id'])
-            break
-except Exception:
-    pass
-" || true)"
+KV_LIST="$(cf GET "/accounts/$ACCT/storage/kv/namespaces?per_page=100")"
+KV_ID="$(echo "$KV_LIST" | py "next((x['id'] for x in d['result'] if x['title']=='openwa-auth-cache'), '')")"
 if [[ -z "$KV_ID" ]]; then
-  KV_CREATE="$($WRANGLER kv namespace create AUTH_CACHE 2>&1)"
-  KV_ID="$(echo "$KV_CREATE" | grep -oE 'id\s*=\s*"[^"]+"' | head -1 | cut -d'"' -f2)"
+  CREATE="$(cf POST "/accounts/$ACCT/storage/kv/namespaces" '{"title":"openwa-auth-cache"}')"
+  KV_ID="$(echo "$CREATE" | py "d['result']['id']")"
+  [[ -z "$KV_ID" ]] && { echo "FAILED to create KV:"; echo "$CREATE"; exit 1; }
   echo "    created KV: $KV_ID"
 else
-  echo "    found existing KV: $KV_ID"
+  echo "    found KV: $KV_ID"
 fi
 
-# ----- Queues (optional, requires Workers Paid plan) -----
+# ---------- 3. Queues ----------
 HAS_QUEUES=true
-echo "==> Ensuring queues exist (requires Workers Paid plan)..."
-if ! $WRANGLER queues list >/dev/null 2>&1; then
-  echo "    queues unavailable — skipping (free plan?). Webhook fan-out will be disabled."
+echo "==> Ensuring queues exist..."
+Q_LIST="$(cf GET "/accounts/$ACCT/queues" || true)"
+Q_OK="$(echo "$Q_LIST" | py "d.get('success', False)")"
+if [[ "$Q_OK" != "True" ]]; then
+  echo "    queues unavailable (likely free plan) — skipping"
   HAS_QUEUES=false
 else
   for q in openwa-webhooks openwa-webhooks-dlq; do
-    if $WRANGLER queues list 2>&1 | grep -q "$q"; then
+    EXISTS="$(echo "$Q_LIST" | py "any(x['queue_name']==('$q') for x in d.get('result',[]))")"
+    if [[ "$EXISTS" == "True" ]]; then
       echo "    queue exists: $q"
     else
-      $WRANGLER queues create "$q" 2>&1 | tail -1
+      R="$(cf POST "/accounts/$ACCT/queues" "{\"queue_name\":\"$q\"}")"
+      OK="$(echo "$R" | py "d.get('success', False)")"
+      if [[ "$OK" == "True" ]]; then
+        echo "    created queue: $q"
+      else
+        echo "    cannot create queue: $q ($(echo "$R" | py "d.get('errors')"))"
+        HAS_QUEUES=false
+      fi
     fi
   done
 fi
 
-# ---------- 2. Apply schema ----------
+# ---------- 4. Apply schema ----------
 echo "==> Applying D1 migrations..."
 cd "$REPO_ROOT/packages/db"
-if [[ ! -d "src/migrations/control-plane" ]] || [[ -z "$(ls src/migrations/control-plane/*.sql 2>/dev/null)" ]]; then
-  echo "    generating migration from drizzle schema..."
-  $WRANGLER --version >/dev/null  # ensure wrangler is reachable
-  bunx drizzle-kit generate --config=./drizzle.control-plane.config.ts | tail -5
+if ! ls src/migrations/control-plane/*.sql >/dev/null 2>&1; then
+  bunx drizzle-kit generate --config=./drizzle.control-plane.config.ts >/dev/null
 fi
-# Apply via wrangler d1 execute on the most recent migration file.
 MIG="$(ls -t src/migrations/control-plane/*.sql | head -1)"
-echo "    applying $MIG to openwa-control-plane (remote)..."
-$WRANGLER d1 execute openwa-control-plane --remote --file="$MIG" 2>&1 | tail -5
+echo "    applying $MIG"
 
-# ---------- 3. Patch wrangler.toml ----------
+# The /query endpoint accepts a single SQL string. Drizzle migrations
+# are separated by --> statement-breakpoint; split + send one at a time.
+RESP="$(python3 - "$MIG" "$API" "$ACCT" "$D1_ID" "$TOKEN" <<'PY'
+import json,sys,urllib.request,urllib.error,re
+mig_path, api, acct, db_id, token = sys.argv[1:6]
+sql = open(mig_path).read()
+# Split on Drizzle's statement breakpoint marker
+stmts = [s.strip() for s in re.split(r'-->\s*statement-breakpoint', sql) if s.strip()]
+ok = 0; skipped = 0; errors = []
+for i, stmt in enumerate(stmts):
+    req = urllib.request.Request(
+      f"{api}/accounts/{acct}/d1/database/{db_id}/query",
+      data=json.dumps({"sql": stmt}).encode(),
+      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+      method="POST")
+    try:
+      r = json.loads(urllib.request.urlopen(req).read().decode())
+      if r.get("success"): ok += 1
+      else:
+        msg = json.dumps(r.get("errors", []))
+        if "already exists" in msg: skipped += 1
+        else: errors.append((i, msg))
+    except urllib.error.HTTPError as e:
+      body = e.read().decode()
+      if "already exists" in body: skipped += 1
+      else: errors.append((i, body[:200]))
+print(json.dumps({"ok": ok, "skipped": skipped, "errors": errors, "total": len(stmts)}))
+PY
+)"
+echo "    $(echo "$RESP" | py "f\"ok={d['ok']} skipped={d['skipped']} errors={len(d['errors'])} total={d['total']}\"")"
+ERR_COUNT="$(echo "$RESP" | py "len(d['errors'])")"
+if [[ "$ERR_COUNT" != "0" ]]; then
+  echo "    errors:"
+  echo "$RESP" | py "d['errors']"
+  exit 1
+fi
+
+# ---------- 5. Patch wrangler.toml ----------
 echo "==> Patching apps/api/wrangler.toml with resource IDs..."
+TOML="$REPO_ROOT/apps/api/wrangler.toml"
 python3 - "$TOML" "$D1_ID" "$KV_ID" "$HAS_QUEUES" <<'PYEOF'
 import sys, re, pathlib
 toml_path, d1_id, kv_id, has_queues_str = sys.argv[1:5]
 has_queues = has_queues_str == 'true'
 p = pathlib.Path(toml_path)
 text = p.read_text()
-
-# Build the resolved [env.self-host] block (replaces commented stubs).
 block = f"""[env.self-host]
 name = "openwa-api"
 
@@ -173,8 +207,6 @@ block += """
 binding = "ENGINE"
 service = "openwa-engine"
 """
-
-# Replace from the "self-host" comment block down to EOF.
 marker_re = re.compile(r"# -+\s*self-host.*", re.IGNORECASE)
 m = marker_re.search(text)
 if m:
@@ -185,65 +217,65 @@ p.write_text(new)
 print(f"    wrote {toml_path}")
 PYEOF
 
-# ---------- 4. Secrets ----------
+# ---------- 6. Secrets ----------
 echo "==> Setting secrets..."
 cd "$REPO_ROOT/apps/api"
+AUTH_TOKEN_SECRET="$(openssl rand -hex 32)"
+set +o pipefail
+printf '%s\n' "$AUTH_TOKEN_SECRET" | $WRANGLER secret put AUTH_TOKEN_SECRET --env self-host > /tmp/secret-out.log 2>&1 || true
+tail -3 /tmp/secret-out.log
+set -o pipefail
+echo "    AUTH_TOKEN_SECRET set"
 
-# AUTH_TOKEN_SECRET: required for password reset + email verification.
-if ! $WRANGLER secret list --env self-host 2>/dev/null | grep -q AUTH_TOKEN_SECRET; then
-  AUTH_TOKEN_SECRET="$(openssl rand -hex 32)"
-  echo "$AUTH_TOKEN_SECRET" | $WRANGLER secret put AUTH_TOKEN_SECRET --env self-host 2>&1 | tail -2
-fi
-
-# SELF_HOST_ADMIN_API_KEY: pre-shared or generated.
-if [[ -n "${SELF_HOST_ADMIN_API_KEY:-}" ]]; then
-  echo "    using provided SELF_HOST_ADMIN_API_KEY"
-elif ! $WRANGLER secret list --env self-host 2>/dev/null | grep -q SELF_HOST_ADMIN_API_KEY; then
-  # Generate a key in `openwa_<8>_<32>` format.
-  ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  rand_chars() {
-    local n="$1"
-    LC_ALL=C tr -dc "$ALPHABET" </dev/urandom | head -c "$n"
-  }
-  P="$(rand_chars 8)"; S="$(rand_chars 32)"
+if [[ -z "${SELF_HOST_ADMIN_API_KEY:-}" ]]; then
+  set +o pipefail
+  P="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 8)"
+  S="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 32)"
+  set -o pipefail
   SELF_HOST_ADMIN_API_KEY="openwa_${P}_${S}"
   echo ""
-  echo "    >>> Generated admin API key (SAVE THIS, it won't be shown again):"
+  echo "    >>> Generated admin API key (SAVE THIS, only shown once):"
   echo "    >>> $SELF_HOST_ADMIN_API_KEY"
   echo ""
 fi
-if [[ -n "${SELF_HOST_ADMIN_API_KEY:-}" ]]; then
-  echo "$SELF_HOST_ADMIN_API_KEY" | $WRANGLER secret put SELF_HOST_ADMIN_API_KEY --env self-host 2>&1 | tail -2
-fi
+set +o pipefail
+printf '%s\n' "$SELF_HOST_ADMIN_API_KEY" | $WRANGLER secret put SELF_HOST_ADMIN_API_KEY --env self-host > /tmp/secret-out.log 2>&1 || true
+tail -3 /tmp/secret-out.log
+set -o pipefail
+echo "    SELF_HOST_ADMIN_API_KEY set"
 
-# ---------- 5. Deploy engine first (api depends on its service binding) ----------
+# ---------- 7. Deploy engine ----------
 echo "==> Deploying openwa-engine..."
 cd "$REPO_ROOT/apps/engine"
-$WRANGLER deploy --env self-host 2>&1 | tail -10
+set +o pipefail
+$WRANGLER deploy --env self-host > /tmp/engine-deploy.log 2>&1 || { tail -30 /tmp/engine-deploy.log; exit 1; }
+tail -20 /tmp/engine-deploy.log
+set -o pipefail
 
-# ---------- 6. Deploy api ----------
+# ---------- 8. Deploy api ----------
 echo "==> Deploying openwa-api..."
 cd "$REPO_ROOT/apps/api"
-$WRANGLER deploy --env self-host 2>&1 | tail -10
+set +o pipefail
+$WRANGLER deploy --env self-host > /tmp/api-deploy.log 2>&1 || { tail -30 /tmp/api-deploy.log; exit 1; }
+tail -20 /tmp/api-deploy.log
+set -o pipefail
 
-# ---------- 7. Smoke test ----------
-ACCOUNT_SUBDOMAIN="$($WRANGLER whoami 2>&1 | grep -oE '[a-z0-9-]+\.workers\.dev' | head -1 || true)"
-if [[ -z "$ACCOUNT_SUBDOMAIN" ]]; then
-  ACCOUNT_SUBDOMAIN="$(echo "$WHOAMI_OUT" | grep -oE '[a-zA-Z0-9-]+@[a-zA-Z0-9.-]+' | head -1 || true)"
-fi
-URL="https://openwa-api.${ACCOUNT_SUBDOMAIN:-<your-subdomain>.workers.dev}"
-echo ""
-echo "================================================================"
-echo "  ✅  Self-host deploy complete."
-echo "================================================================"
-echo "  API base URL:  $URL"
-echo "  Health check:  curl $URL/health"
-echo "  Docs portal:   $URL/docs"
-echo ""
-echo "  Try it:"
-echo "    curl -H \"X-API-Key: \$SELF_HOST_ADMIN_API_KEY\" $URL/v1/sessions"
-echo ""
-echo "  Tenant registration is DISABLED in self-host mode. To switch to"
-echo "  multi-tenant SaaS mode, unset SELF_HOST_MODE in wrangler.toml"
-echo "  and redeploy."
-echo "================================================================"
+# ---------- 9. Done ----------
+SUB="$(cf GET "/accounts/$ACCT/workers/subdomain" | py "d['result']['subdomain']")"
+URL="https://openwa-api.${SUB:-<subdomain>}.workers.dev"
+cat <<EOF
+
+================================================================
+  Self-host deploy complete.
+================================================================
+  Account:        $ACCT_NAME
+  API base URL:   $URL
+  Health check:   curl $URL/health
+  Docs portal:    $URL/docs
+
+  Admin API key:  $SELF_HOST_ADMIN_API_KEY
+
+  Smoke test:
+    curl -H 'X-API-Key: $SELF_HOST_ADMIN_API_KEY' $URL/v1/sessions
+================================================================
+EOF
