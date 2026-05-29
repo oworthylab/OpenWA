@@ -106,4 +106,75 @@ export class EngineClient {
   health(sessionId: string): Promise<{ state: string; uptimeMs: number }> {
     return this.call(sessionId, '/health');
   }
+
+  // -------------------- contacts (US-024) --------------------
+
+  listContacts(
+    sessionId: string,
+    query: { page?: number; pageSize?: number; search?: string },
+  ): Promise<{ data: unknown[]; pagination?: unknown }> {
+    const qs = new URLSearchParams();
+    if (query.page) qs.set('page', String(query.page));
+    if (query.pageSize) qs.set('pageSize', String(query.pageSize));
+    if (query.search) qs.set('search', query.search);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.call(sessionId, `/contacts${suffix}`);
+  }
+
+  getContact(sessionId: string, jid: string): Promise<unknown> {
+    return this.call(sessionId, `/contacts/${encodeURIComponent(jid)}`);
+  }
+
+  checkContacts(sessionId: string, body: { phones: string[] }): Promise<{ results: unknown[] }> {
+    return this.call(sessionId, '/contacts/check', { method: 'POST', body });
+  }
+
+  getContactPhoto(sessionId: string, jid: string): Promise<{ url: string | null }> {
+    return this.call(sessionId, `/contacts/${encodeURIComponent(jid)}/photo`);
+  }
+
+  blockContact(sessionId: string, jid: string): Promise<void> {
+    return this.call(sessionId, '/contacts/block', { method: 'POST', body: { jid } });
+  }
+
+  unblockContact(sessionId: string, jid: string): Promise<void> {
+    return this.call(sessionId, '/contacts/unblock', { method: 'POST', body: { jid } });
+  }
+
+  // -------------------- groups (US-025) --------------------
+
+  listGroups(sessionId: string): Promise<{ data: unknown[] }> {
+    return this.call(sessionId, '/groups');
+  }
+
+  getGroup(sessionId: string, jid: string): Promise<unknown> {
+    return this.call(sessionId, `/groups/${encodeURIComponent(jid)}`);
+  }
+
+  createGroup(sessionId: string, body: unknown): Promise<{ jid: string }> {
+    return this.call(sessionId, '/groups', { method: 'POST', body });
+  }
+
+  updateGroup(sessionId: string, jid: string, body: unknown): Promise<void> {
+    return this.call(sessionId, `/groups/${encodeURIComponent(jid)}`, { method: 'PATCH', body });
+  }
+
+  groupParticipants(
+    sessionId: string,
+    jid: string,
+    body: unknown,
+  ): Promise<{ results: unknown[] }> {
+    return this.call(sessionId, `/groups/${encodeURIComponent(jid)}/participants`, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  groupInviteLink(sessionId: string, jid: string): Promise<{ url: string }> {
+    return this.call(sessionId, `/groups/${encodeURIComponent(jid)}/invite`);
+  }
+
+  groupRevokeInvite(sessionId: string, jid: string): Promise<{ url: string }> {
+    return this.call(sessionId, `/groups/${encodeURIComponent(jid)}/invite`, { method: 'DELETE' });
+  }
 }
