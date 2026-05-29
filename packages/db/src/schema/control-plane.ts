@@ -433,6 +433,131 @@ export const conversationsRelations = relations(conversations, ({ one }) => ({
   }),
 }));
 
+// -------------------- labels (Sprint 8, US-059) --------------------
+export const labels = sqliteTable(
+  'labels',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('#1f6feb'),
+    /** Optional WhatsApp-native label id for bidirectional sync. */
+    waLabelId: text('wa_label_id'),
+    createdAt: ts('created_at'),
+  },
+  (t) => ({
+    tenantNameIdx: uniqueIndex('labels_tenant_name_idx').on(t.tenantId, t.name),
+    tenantIdx: index('labels_tenant_idx').on(t.tenantId),
+  }),
+);
+
+export const contactLabels = sqliteTable(
+  'contact_labels',
+  {
+    contactId: text('contact_id')
+      .notNull()
+      .references(() => crmContacts.id, { onDelete: 'cascade' }),
+    labelId: text('label_id')
+      .notNull()
+      .references(() => labels.id, { onDelete: 'cascade' }),
+    createdAt: ts('created_at'),
+  },
+  (t) => ({
+    pk: uniqueIndex('contact_labels_pk').on(t.contactId, t.labelId),
+  }),
+);
+
+// -------------------- statuses / stories (Sprint 8, US-060) --------------------
+export const statuses = sqliteTable(
+  'statuses',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id').notNull(),
+    kind: text('kind', { enum: ['text', 'image', 'video'] }).notNull(),
+    /** Plain text for text statuses, caption for media. */
+    text: text('text'),
+    /** R2 object key (or external URL) for media statuses. */
+    mediaKey: text('media_key'),
+    /** Background color for text statuses (#rrggbb). */
+    backgroundColor: text('background_color'),
+    /** Font name for text statuses. */
+    font: text('font'),
+    /** Cached view count (denormalised from status_views for fast list). */
+    viewCount: integer('view_count').notNull().default(0),
+    expiresAt: optionalTs('expires_at'),
+    deletedAt: optionalTs('deleted_at'),
+    createdAt: ts('created_at'),
+  },
+  (t) => ({
+    tenantIdx: index('statuses_tenant_idx').on(t.tenantId),
+    sessionIdx: index('statuses_session_idx').on(t.sessionId),
+  }),
+);
+
+export const statusViews = sqliteTable(
+  'status_views',
+  {
+    statusId: text('status_id')
+      .notNull()
+      .references(() => statuses.id, { onDelete: 'cascade' }),
+    viewerJid: text('viewer_jid').notNull(),
+    viewedAt: ts('viewed_at'),
+  },
+  (t) => ({
+    pk: uniqueIndex('status_views_pk').on(t.statusId, t.viewerJid),
+  }),
+);
+
+// -------------------- tenant settings (Sprint 8, US-063) --------------------
+export const tenantSettings = sqliteTable(
+  'tenant_settings',
+  {
+    tenantId: text('tenant_id')
+      .primaryKey()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    displayName: text('display_name'),
+    timezone: text('timezone').notNull().default('UTC'),
+    language: text('language').notNull().default('en'),
+    theme: text('theme', { enum: ['light', 'dark', 'system'] })
+      .notNull()
+      .default('system'),
+    notifyOnIncomingMessage: integer('notify_on_incoming_message', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    notifyOnSessionDisconnect: integer('notify_on_session_disconnect', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    notifyEmail: text('notify_email'),
+    updatedAt: ts('updated_at'),
+  },
+);
+
+// -------------------- plugins (Sprint 8, US-064) --------------------
+export const tenantPlugins = sqliteTable(
+  'tenant_plugins',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    /** Plugin manifest id, e.g. `auto-reply`. */
+    pluginId: text('plugin_id').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+    /** Free-form per-plugin config blob. */
+    config: text('config', { mode: 'json' }).$type<Record<string, unknown>>(),
+    installedAt: ts('installed_at'),
+    updatedAt: ts('updated_at'),
+  },
+  (t) => ({
+    tenantPluginIdx: uniqueIndex('tenant_plugins_tenant_plugin_idx').on(t.tenantId, t.pluginId),
+  }),
+);
+
 // -------------------- inferred types --------------------
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -461,3 +586,14 @@ export type MartIntegration = typeof martIntegrations.$inferSelect;
 export type NewMartIntegration = typeof martIntegrations.$inferInsert;
 export type AbandonedCart = typeof abandonedCarts.$inferSelect;
 export type NewAbandonedCart = typeof abandonedCarts.$inferInsert;
+export type Label = typeof labels.$inferSelect;
+export type NewLabel = typeof labels.$inferInsert;
+export type ContactLabel = typeof contactLabels.$inferSelect;
+export type StatusRow = typeof statuses.$inferSelect;
+export type NewStatusRow = typeof statuses.$inferInsert;
+export type StatusView = typeof statusViews.$inferSelect;
+export type NewStatusView = typeof statusViews.$inferInsert;
+export type TenantSettingsRow = typeof tenantSettings.$inferSelect;
+export type NewTenantSettings = typeof tenantSettings.$inferInsert;
+export type TenantPlugin = typeof tenantPlugins.$inferSelect;
+export type NewTenantPlugin = typeof tenantPlugins.$inferInsert;
