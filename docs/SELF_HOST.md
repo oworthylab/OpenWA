@@ -25,7 +25,43 @@ the `SELF_HOST_MODE` flag differ.
 
 ## 1. Single-tenant self-host
 
-### Step 1 — Provision Cloudflare resources
+### Option A — One-command deploy (recommended)
+
+```bash
+export CLOUDFLARE_API_TOKEN=cf_xxxxxxxxxxxxxxxxx
+./scripts/deploy-self-host.sh
+```
+
+The script is **idempotent**: it creates D1 / KV / Queues / Workers if
+missing, applies the latest schema migration, sets `AUTH_TOKEN_SECRET`
+and `SELF_HOST_ADMIN_API_KEY` (generating the admin key if not
+provided), patches `apps/api/wrangler.toml` with the resource IDs,
+and deploys both `openwa-api` and `openwa-engine` workers.
+
+The generated admin key is printed **once** at the end — copy it
+immediately. To bring your own key:
+
+```bash
+export SELF_HOST_ADMIN_API_KEY=openwa_xxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+./scripts/deploy-self-host.sh
+```
+
+To tear everything down (DESTRUCTIVE — drops the D1 database):
+
+```bash
+./scripts/teardown-self-host.sh --confirm
+```
+
+> **Cost note:** Queues require a Workers Paid plan ($5/mo). If your
+> account is on the free plan the script skips queue creation and the
+> webhook fan-out path degrades gracefully (deliveries still work
+> synchronously via the API; retries are best-effort).
+
+### Option B — Manual steps
+
+If you want fine-grained control:
+
+#### Step 1 — Provision Cloudflare resources
 
 ```bash
 cd apps/api

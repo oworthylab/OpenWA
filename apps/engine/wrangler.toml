@@ -20,3 +20,15 @@ name = "openwa-engine-staging"
 
 [env.production]
 name = "openwa-engine-production"
+
+# ---------------- self-host (single-tenant) ----------------
+[env.self-host]
+name = "openwa-engine"
+
+[[env.self-host.durable_objects.bindings]]
+name = "SESSION_HOST"
+class_name = "WhatsAppSessionDO"
+
+[[env.self-host.migrations]]
+tag = "v1"
+new_sqlite_classes = ["WhatsAppSessionDO"]
