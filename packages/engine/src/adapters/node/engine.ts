@@ -16,12 +16,15 @@
  * that talks to WhatsApp via native `WebSocket` + Web Crypto (Sprint 2b/3).
  */
 
-import makeWASocket, {
+import {
   type AnyMessageContent,
-  DisconnectReason,
-  useMultiFileAuthState,
-  type WASocket,
   type ConnectionState as BaileysConnectionState,
+  Browsers,
+  DisconnectReason,
+  type WASocket,
+  fetchLatestBaileysVersion,
+  makeWASocket,
+  useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 import { type Logger, pino } from 'pino';
 
@@ -230,11 +233,16 @@ export class NodeEngine implements IEngine {
       ...(state.creds?.me?.name ? { pushName: state.creds.me.name } : {}),
     };
 
+    const { version } = await fetchLatestBaileysVersion().catch(() => ({
+      version: undefined as [number, number, number] | undefined,
+    }));
+
     this.sock = makeWASocket({
       auth: state,
       logger: this.logger as unknown as Logger,
       printQRInTerminal: false,
-      browser: ['OpenWA', 'Chrome', '1.0.0'],
+      browser: Browsers.macOS('Desktop'),
+      ...(version ? { version } : {}),
     });
 
     this.sock.ev.on('creds.update', () => {

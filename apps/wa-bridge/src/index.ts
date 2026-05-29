@@ -25,17 +25,17 @@
  */
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdir } from 'node:fs/promises';
+import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import { join } from 'node:path';
 
 import { qrToDataUrl } from '@openwa/engine';
-import { NodeEngine } from '@openwa/engine/node';
 import type { EngineEvent } from '@openwa/engine/events';
+import { NodeEngine } from '@openwa/engine/node';
 import { pino } from 'pino';
 
-import { router } from './router.js';
 import { config } from './config.js';
+import { router } from './router.js';
 
 const log = pino({ level: config.logLevel, name: 'wa-bridge' });
 
@@ -76,7 +76,11 @@ async function ensureSession(sessionId: string): Promise<SessionEntry> {
       if (event.type === 'auth.qr') {
         entry.lastQrDataUrl = await qrToDataUrl(event.qr);
         entry.lastQrAt = Date.now();
-      } else if (event.type === 'auth.ready' || event.type === 'auth.logged_out') {
+        log.info({ sessionId }, 'QR generated');
+      } else if (event.type === 'auth.ready') {
+        entry.lastQrDataUrl = null;
+        log.info({ sessionId }, 'session authenticated');
+      } else if (event.type === 'auth.logged_out') {
         entry.lastQrDataUrl = null;
       }
       await dispatchEvent(sessionId, event);
@@ -103,10 +107,7 @@ async function dispatchEvent(sessionId: string, event: EngineEvent): Promise<voi
       body,
     });
     if (!res.ok) {
-      log.warn(
-        { sessionId, type: event.type, status: res.status },
-        'webhook responded non-200',
-      );
+      log.warn({ sessionId, type: event.type, status: res.status }, 'webhook responded non-200');
     }
   } catch (err) {
     log.warn({ err, sessionId, type: event.type }, 'webhook delivery failed');

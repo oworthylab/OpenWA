@@ -62,8 +62,11 @@ export async function router(ctx: RouterCtx): Promise<void> {
     case 'POST /start':
     case 'POST /connect': {
       // Fire-and-forget so the caller doesn't hang waiting for QR scan.
-      void entry.engine.connect().catch(() => {
-        /* errors surface via engine events */
+      void entry.engine.connect().catch((err: unknown) => {
+        // Surface failures that happen BEFORE the engine starts emitting
+        // events (e.g. auth dir perms, bad config). After that the
+        // `engine.onAny` subscriber in index.ts handles error events.
+        console.error('[bridge] connect failed for', sessionId, err);
       });
       respond(202, { ok: true, state: entry.engine.state });
       return;
