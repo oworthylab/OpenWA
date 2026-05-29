@@ -1,0 +1,22 @@
+name = "openwa-engine"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Durable Object class (WhatsApp session host)
+[[durable_objects.bindings]]
+name = "SESSION_HOST"
+class_name = "WhatsAppSessionDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WhatsAppSessionDO"]
+
+[env.staging]
+name = "openwa-engine-staging"
+
+[env.production]
+name = "openwa-engine-production"
