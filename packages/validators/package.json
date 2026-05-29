@@ -12,6 +12,8 @@
     "./session": "./src/session.ts",
     "./message": "./src/message.ts",
     "./webhook": "./src/webhook.ts",
+    "./contact": "./src/contact.ts",
+    "./group": "./src/group.ts",
     "./error": "./src/error.ts"
   },
   "scripts": {
