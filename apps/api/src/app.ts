@@ -10,6 +10,8 @@ import { ApiError, internal, notFound, unauthorized } from './errors.js';
 import { authenticate } from './middleware/auth.js';
 import { checkRateLimit, isExemptPath, rateLimitHeaders } from './middleware/rate-limit.js';
 import { auditRoutes } from './routes/audit.js';
+import { authRoutes } from './routes/auth.js';
+import { billingRoutes } from './routes/billing.js';
 import { contactRoutes } from './routes/contacts.js';
 import { groupRoutes } from './routes/groups.js';
 import { healthRoutes } from './routes/health.js';
@@ -64,6 +66,8 @@ export function buildApp(env: ApiEnv) {
       }
     })
     .use(healthRoutes(env))
+    .use(authRoutes(env))
+    .use(billingRoutes(env))
     .use(sessionRoutes(env))
     .use(webhookRoutes(env))
     .use(contactRoutes(env))
