@@ -15,6 +15,13 @@ export interface ApiEnv {
   ENGINE?: Fetcher;
   /** Optional override; defaults to `'production'`. */
   ENVIRONMENT?: string;
+  /** Secret used to sign email-verification + password-reset tokens. */
+  AUTH_TOKEN_SECRET?: string;
+  /** Stripe secret key (`sk_test_...` or `sk_live_...`). When unset, the
+   *  billing routes operate in stub mode for local/dev use. */
+  STRIPE_SECRET?: string;
+  /** Stripe webhook signing secret (`whsec_...`). */
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 export interface WebhookQueueMessage {
