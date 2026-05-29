@@ -1,0 +1,66 @@
+name = "openwa-api"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# All bindings are declared per-environment so each env targets its own
+# D1 / KV / Queue / service binding. Replace IDs before deploying.
+
+# ---------------- staging ----------------
+[env.staging]
+name = "openwa-api-staging"
+
+# [[env.staging.d1_databases]]
+# binding = "CONTROL_PLANE_DB"
+# database_name = "openwa-control-plane-staging"
+# database_id = "REPLACE_ME"
+
+# [[env.staging.kv_namespaces]]
+# binding = "AUTH_CACHE"
+# id = "REPLACE_ME"
+
+# [[env.staging.queues.producers]]
+# binding = "WEBHOOK_QUEUE"
+# queue = "openwa-webhooks-staging"
+
+# [[env.staging.queues.consumers]]
+# queue = "openwa-webhooks-staging"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 4
+# dead_letter_queue = "openwa-webhooks-dlq-staging"
+
+# [[env.staging.services]]
+# binding = "ENGINE"
+# service = "openwa-engine-staging"
+
+# ---------------- production ----------------
+[env.production]
+name = "openwa-api-production"
+
+# [[env.production.d1_databases]]
+# binding = "CONTROL_PLANE_DB"
+# database_name = "openwa-control-plane"
+# database_id = "REPLACE_ME"
+
+# [[env.production.kv_namespaces]]
+# binding = "AUTH_CACHE"
+# id = "REPLACE_ME"
+
+# [[env.production.queues.producers]]
+# binding = "WEBHOOK_QUEUE"
+# queue = "openwa-webhooks"
+
+# [[env.production.queues.consumers]]
+# queue = "openwa-webhooks"
+# max_batch_size = 25
+# max_batch_timeout = 5
+# max_retries = 4
+# dead_letter_queue = "openwa-webhooks-dlq"
+
+# [[env.production.services]]
+# binding = "ENGINE"
+# service = "openwa-engine"
