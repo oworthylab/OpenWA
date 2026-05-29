@@ -260,9 +260,50 @@ $WRANGLER deploy --env self-host > /tmp/api-deploy.log 2>&1 || { tail -30 /tmp/a
 tail -20 /tmp/api-deploy.log
 set -o pipefail
 
-# ---------- 9. Done ----------
+# ---------- 8b. Deploy dashboard to Pages ----------
+echo "==> Ensuring Cloudflare Pages project 'openwa-dashboard' exists..."
+PAGES_LIST="$(cf GET "/accounts/$ACCT/pages/projects?per_page=100")"
+PAGES_EXISTS="$(echo "$PAGES_LIST" | py "any(x['name']=='openwa-dashboard' for x in d.get('result',[]))")"
+if [[ "$PAGES_EXISTS" != "True" ]]; then
+  CREATE="$(cf POST "/accounts/$ACCT/pages/projects" \
+    '{"name":"openwa-dashboard","production_branch":"main"}')"
+  OK="$(echo "$CREATE" | py "d.get('success', False)")"
+  if [[ "$OK" == "True" ]]; then
+    echo "    created Pages project: openwa-dashboard"
+  else
+    echo "    WARN: Pages project create returned: $(echo "$CREATE" | py "d.get('errors')")"
+  fi
+else
+  echo "    found Pages project: openwa-dashboard"
+fi
+
+# Detect subdomain early so we can wire it into the Pages var.
 SUB="$(cf GET "/accounts/$ACCT/workers/subdomain" | py "d['result']['subdomain']")"
-URL="https://openwa-api.${SUB:-<subdomain>}.workers.dev"
+API_URL="https://openwa-api.${SUB:-workers}.workers.dev"
+
+echo "==> Setting Pages var API_BASE_URL=$API_URL ..."
+PROD_VARS_BODY="$(python3 -c "import json; print(json.dumps({'deployment_configs':{'production':{'env_vars':{'API_BASE_URL':{'value':'$API_URL','type':'plain_text'}}},'preview':{'env_vars':{'API_BASE_URL':{'value':'$API_URL','type':'plain_text'}}}}}))")"
+cf PATCH "/accounts/$ACCT/pages/projects/openwa-dashboard" "$PROD_VARS_BODY" > /tmp/pages-vars.log 2>&1 || true
+
+echo "==> Building dashboard..."
+cd "$REPO_ROOT/apps/dashboard"
+if [[ ! -d node_modules ]]; then
+  (cd "$REPO_ROOT" && bun install) > /tmp/dash-install.log 2>&1 || { tail -20 /tmp/dash-install.log; exit 1; }
+fi
+VITE_API_BASE_URL="/api" bun run build > /tmp/dash-build.log 2>&1 || { tail -30 /tmp/dash-build.log; exit 1; }
+tail -10 /tmp/dash-build.log
+
+echo "==> Deploying dashboard to Cloudflare Pages..."
+set +o pipefail
+$WRANGLER pages deploy dist --project-name=openwa-dashboard --branch=main --commit-dirty=true > /tmp/pages-deploy.log 2>&1 || { tail -30 /tmp/pages-deploy.log; exit 1; }
+tail -10 /tmp/pages-deploy.log
+DASHBOARD_URL="$(grep -oE 'https://[a-z0-9-]+\.openwa-dashboard\.pages\.dev' /tmp/pages-deploy.log | head -1)"
+DASHBOARD_URL="${DASHBOARD_URL:-https://openwa-dashboard.pages.dev}"
+set -o pipefail
+echo "    dashboard: $DASHBOARD_URL"
+
+# ---------- 9. Done ----------
+URL="$API_URL"
 cat <<EOF
 
 ================================================================
@@ -270,6 +311,7 @@ cat <<EOF
 ================================================================
   Account:        $ACCT_NAME
   API base URL:   $URL
+  Dashboard URL:  $DASHBOARD_URL
   Health check:   curl $URL/health
   Docs portal:    $URL/docs
 

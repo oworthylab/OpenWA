@@ -233,3 +233,54 @@ it targets a stack that no longer exists. See
 | `500 INTERNAL_ERROR` on `/v1/*` routes | `CONTROL_PLANE_DB` binding missing — verify `wrangler.toml` IDs match the resources created in Step 1. |
 | `503` on `/v1/billing/webhooks` | `STRIPE_WEBHOOK_SECRET` not set — only needed for multi-tenant billing. |
 | Auto-generated key not appearing in logs | Confirm `LOG_LEVEL` is `warn` or lower (default is `info` in production). |
+
+---
+
+## Dashboard on Cloudflare Pages
+
+Sprint 9 ships the OpenWA dashboard to Cloudflare Pages as project
+`openwa-dashboard`. The same one-command deploy script (or the dedicated
+GitHub Action) provisions the Pages project, sets the upstream API URL,
+builds the SPA, and publishes it.
+
+### One-command (recommended)
+
+```bash
+export CLOUDFLARE_API_TOKEN=cf_xxxxxxxxxxxxxxxxx
+./scripts/deploy-self-host.sh
+```
+
+The script now also:
+
+1. Creates the `openwa-dashboard` Pages project if missing.
+2. Sets the `API_BASE_URL` Pages variable to the deployed worker URL
+   (`https://openwa-api.<subdomain>.workers.dev`).
+3. Builds `apps/dashboard` with `VITE_API_BASE_URL=/api`.
+4. Publishes `apps/dashboard/dist` via `wrangler pages deploy`.
+
+At the end you get both URLs:
+
+```
+API base URL:   https://openwa-api.<subdomain>.workers.dev
+Dashboard URL:  https://<hash>.openwa-dashboard.pages.dev
+```
+
+### Same-origin /api/* proxy
+
+The dashboard makes same-origin requests to `/api/*`. These are handled
+by a Pages Function (`apps/dashboard/functions/api/[[path]].ts`) that
+proxies to the API worker — no CORS configuration needed, no upstream
+URL baked into the bundle.
+
+### Custom domain
+
+In the Cloudflare dashboard, open **Pages → openwa-dashboard → Custom
+domains** and add e.g. `dashboard.example.com`. CF auto-provisions a
+certificate. Update DNS to a CNAME pointing at the Pages domain.
+
+### CI
+
+`.github/workflows/deploy-dashboard.yml` redeploys on every push to
+`main` that touches `apps/dashboard/`. Required secrets:
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Optional repo variable:
+`OPENWA_API_BASE_URL` (defaults to the workers.dev URL).

@@ -1,7 +1,11 @@
 // API Service Layer for OpenWA Dashboard
 // Centralized API client with TypeScript types
 
-const API_BASE_URL = '/api';
+// In production (Cloudflare Pages) the dashboard talks to the openwa-api
+// Worker via a same-origin Pages Function at /api/* (see
+// functions/api/[[path]].ts). Locally we proxy /api → http://localhost:2785
+// via the Vite dev server. VITE_API_BASE_URL can override.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
 
 // =============================================================================
 // Types

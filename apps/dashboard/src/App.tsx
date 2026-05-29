@@ -8,6 +8,8 @@ import { RoleProvider, useRole, type UserRole } from './hooks/useRole';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './App.css';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Sessions = lazy(() => import('./pages/Sessions').then(m => ({ default: m.Sessions })));
@@ -41,7 +43,7 @@ function AppContent() {
 
     // Fetch the role from API
     try {
-      const response = await fetch('/api/auth/validate', {
+      const response = await fetch(`${API_BASE_URL}/auth/validate`, {
         method: 'POST',
         headers: { 'X-API-Key': key },
       });
@@ -68,7 +70,7 @@ function AppContent() {
   useEffect(() => {
     if (!savedKey) return;
 
-    fetch('/api/auth/validate', {
+    fetch(`${API_BASE_URL}/auth/validate`, {
       method: 'POST',
       headers: { 'X-API-Key': savedKey },
     })

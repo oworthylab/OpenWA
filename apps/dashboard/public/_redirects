@@ -1,0 +1,3 @@
+# SPA fallback — all unmatched routes serve index.html so React Router
+# can handle client-side routing. /api/* is handled by Pages Functions.
+/*    /index.html   200

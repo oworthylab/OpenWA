@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff, Github } from 'lucide-react';
 import './Login.css';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+
 interface LoginProps {
   onLogin: (apiKey: string) => void;
 }
@@ -24,7 +26,7 @@ export function Login({ onLogin }: LoginProps) {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/validate', {
+      const response = await fetch(`${API_BASE_URL}/auth/validate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

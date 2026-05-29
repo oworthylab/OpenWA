@@ -1,0 +1,16 @@
+# Cloudflare Pages deployment config for the OpenWA dashboard.
+#
+# The dashboard is a static Vite SPA built to ./dist and shipped via:
+#   wrangler pages deploy dist --project-name=openwa-dashboard
+#
+# Pages Functions (under ./functions) proxy /api/* to the openwa-api worker
+# so the dashboard does not need to know the worker URL at build time and
+# avoids CORS.
+
+name = "openwa-dashboard"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-09-23"
+
+[vars]
+# Override at deploy time with `wrangler pages deploy ... --var API_BASE_URL=...`
+API_BASE_URL = "https://openwa-api.ktisakib.workers.dev"
