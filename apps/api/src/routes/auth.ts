@@ -269,18 +269,24 @@ export function authRoutes(env: ApiEnv) {
       // Lightweight endpoint the dashboard hits with X-API-Key to confirm
       // the key works and discover the caller's role. Mirrors the legacy
       // NestJS endpoint so the existing SPA login flow keeps working.
-      .post('/validate', async ({ request }) => {
-        const auth = await authenticate(request, env);
-        // Dashboard role enum is admin/operator/viewer; map API roles.
-        const role =
-          auth.role === 'admin' ? 'admin' : auth.role === 'read_write' ? 'operator' : 'viewer';
-        return Response.json({
-          valid: true,
-          role,
-          tenantId: auth.tenantId,
-          keyId: auth.keyId,
-        });
-      })
+      .post(
+        '/validate',
+        async ({ request }) => {
+          const auth = await authenticate(request, env);
+          // Dashboard role enum is admin/operator/viewer; map API roles.
+          const role =
+            auth.role === 'admin' ? 'admin' : auth.role === 'read_write' ? 'operator' : 'viewer';
+          return Response.json({
+            valid: true,
+            role,
+            tenantId: auth.tenantId,
+            keyId: auth.keyId,
+          });
+        },
+        // Dashboard sends POST with content-type: application/json but no
+        // body; disable Elysia's body parser so it doesn't 500 on empty JSON.
+        { parse: 'none' },
+      )
       // GET form for convenience / health checks.
       .get('/validate', async ({ request }) => {
         const auth = await authenticate(request, env);
