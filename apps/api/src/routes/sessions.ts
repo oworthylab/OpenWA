@@ -18,7 +18,7 @@ import { getControlPlaneDB } from '@openwa/db/helpers';
 import { ERROR_CODES } from '@openwa/shared/errors';
 import { SendMediaSchema, SendTextSchema } from '@openwa/validators/message';
 import { CreateSessionSchema } from '@openwa/validators/session';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import * as v from 'valibot';
 import type { ApiEnv } from '../env.js';
@@ -26,7 +26,9 @@ import { ApiError, conflict, internal, notFound, validationFailed } from '../err
 import { writeAudit } from '../lib/audit.js';
 import { newId } from '../lib/crypto.js';
 import { EngineClient } from '../lib/engine-client.js';
+import { incrementUsage } from '../lib/usage.js';
 import { type AuthContext, authenticate, requireRole } from '../middleware/auth.js';
+import { enforceMessageLimit, enforceSessionLimit } from '../middleware/plan-limits.js';
 
 export function sessionRoutes(env: ApiEnv) {
   return new Elysia({ aot: false, prefix: '/v1/sessions' })
@@ -45,6 +47,17 @@ export function sessionRoutes(env: ApiEnv) {
         .limit(1);
       if (existing[0])
         throw conflict('Session name already in use', ERROR_CODES.SESSION_NAME_TAKEN);
+
+      // Plan-based concurrent-session limit (US-048).
+      const currentCount =
+        (
+          await db.select({ n: count() }).from(sessions).where(eq(sessions.tenantId, auth.tenantId))
+        )[0]?.n ?? 0;
+      await enforceSessionLimit({
+        env,
+        tenantId: auth.tenantId,
+        currentCount: Number(currentCount),
+      });
 
       const id = newId();
       const now = new Date();
@@ -170,9 +183,11 @@ export function sessionRoutes(env: ApiEnv) {
         requireRole(auth, 'read_write');
         const parsed = v.safeParse(SendTextSchema, body);
         if (!parsed.success) throw validationFailed(parsed.issues);
+        await enforceMessageLimit({ env, tenantId: auth.tenantId });
         const row = await loadSession(env, auth, params.id);
         const engine = requireEngine(env);
         const result = await engine.sendText(row.id, parsed.output);
+        await incrementUsage(env, auth.tenantId, 'messages_sent');
         return Response.json(result, { status: 202 });
       },
       { body: t.Any() },
@@ -183,9 +198,11 @@ export function sessionRoutes(env: ApiEnv) {
         requireRole(auth, 'read_write');
         const parsed = v.safeParse(SendMediaSchema, body);
         if (!parsed.success) throw validationFailed(parsed.issues);
+        await enforceMessageLimit({ env, tenantId: auth.tenantId });
         const row = await loadSession(env, auth, params.id);
         const engine = requireEngine(env);
         const result = await engine.sendMedia(row.id, parsed.output);
+        await incrementUsage(env, auth.tenantId, 'messages_sent');
         return Response.json(result, { status: 202 });
       },
       { body: t.Any() },
