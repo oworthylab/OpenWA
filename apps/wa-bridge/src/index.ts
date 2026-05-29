@@ -192,6 +192,28 @@ server.listen(config.port, config.host, () => {
     { host: config.host, port: config.port, authDir: config.authDir },
     'wa-bridge listening',
   );
+  if (config.generated.bridgeToken || config.generated.webhookSecret) {
+    // First run — print copy/paste-ready secrets so the operator can wire
+    // up the Cloudflare workers without hunting through files.
+    const lines = [
+      '',
+      '────────────────────────────────────────────────────────────────',
+      '  wa-bridge first run — generated credentials (saved to disk):',
+      '',
+      `  BRIDGE_TOKEN          = ${config.bridgeToken}`,
+      `  BRIDGE_WEBHOOK_SECRET = ${config.webhookSecret}`,
+      '',
+      '  Wire these into Cloudflare:',
+      '    cd apps/engine && wrangler secret put BRIDGE_TOKEN --env self-host',
+      '    cd apps/engine && wrangler secret put BRIDGE_URL   --env self-host',
+      '    cd apps/api    && wrangler secret put BRIDGE_WEBHOOK_SECRET --env self-host',
+      '',
+      `  Stored at: ${config.authDir}/.bridge-config.json`,
+      '────────────────────────────────────────────────────────────────',
+      '',
+    ];
+    console.log(lines.join('\n'));
+  }
 });
 
 const shutdown = async (signal: string) => {

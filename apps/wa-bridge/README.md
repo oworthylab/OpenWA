@@ -3,55 +3,105 @@
 Node sidecar that hosts Baileys WhatsApp sessions and exposes a tiny HTTP
 API the Cloudflare engine Worker proxies to.
 
-**Why:** Baileys depends on `ws`, `node:crypto`, native Curve25519 bindings,
-and a writable filesystem (auth state). None of that runs in the Workers
-runtime. Until OpenWA ships its Workers-native WA protocol implementation,
-this sidecar is the production path for real WhatsApp connectivity.
+## Why do I need this?
 
-## Quick start
+The WhatsApp Web protocol needs `ws`, native crypto, and a writable
+filesystem — none of which work in Cloudflare Workers. So one Node
+process has to host the actual WhatsApp connection. Every WA library
+(Baileys, whatsapp-web.js, venom) has this requirement.
+
+This bridge is the *only* always-on Node piece in the OpenWA stack.
+Everything else (API, dashboard, engine routing) runs on Cloudflare.
+
+## Quick start (zero config)
 
 ```bash
-export BRIDGE_TOKEN=$(openssl rand -hex 32)
-export BRIDGE_WEBHOOK_SECRET=$(openssl rand -hex 32)
-export BRIDGE_WEBHOOK_URL=https://openwa-api.example.workers.dev/v1/internal/engine-events
-
+# from the repo root:
 bun install
-bun --cwd apps/wa-bridge dev
-# bridge listening on 0.0.0.0:3001
+bun run bridge
 ```
 
-Then point the engine Worker at it:
+That's it. The bridge will:
+1. Listen on `http://0.0.0.0:3001`.
+2. Generate a `BRIDGE_TOKEN` and `BRIDGE_WEBHOOK_SECRET` on first run.
+3. Print them to your terminal once with copy/paste-ready `wrangler` commands.
+4. Persist them to `./.wa-auth/.bridge-config.json` so subsequent restarts
+   reuse the same values.
+
+You'll see something like:
+
+```
+────────────────────────────────────────────────────────────────
+  wa-bridge first run — generated credentials (saved to disk):
+
+  BRIDGE_TOKEN          = a1b2c3...
+  BRIDGE_WEBHOOK_SECRET = 9f8e7d...
+
+  Wire these into Cloudflare:
+    cd apps/engine && wrangler secret put BRIDGE_TOKEN --env self-host
+    cd apps/engine && wrangler secret put BRIDGE_URL   --env self-host
+    cd apps/api    && wrangler secret put BRIDGE_WEBHOOK_SECRET --env self-host
+────────────────────────────────────────────────────────────────
+```
+
+Run those three `wrangler secret put` commands, set `BRIDGE_URL` to a
+URL Cloudflare can reach (see "Exposing the bridge" below), and the
+dashboard will work end-to-end: create session → scan QR → chat.
+
+## Exposing the bridge to Cloudflare
+
+The bridge runs on your laptop / VPS / wherever. Cloudflare needs to
+reach it over the public internet. Pick the easiest option:
+
+### Option A — Cloudflare Tunnel (recommended, free, no port forwarding)
 
 ```bash
-cd apps/engine
-wrangler secret put BRIDGE_URL   --env self-host   # https://wa-bridge.your-host.com
-wrangler secret put BRIDGE_TOKEN --env self-host   # same value as BRIDGE_TOKEN above
-wrangler deploy --env self-host
+# install once
+brew install cloudflared        # or apt install cloudflared
+cloudflared tunnel login
+
+# then, while the bridge is running:
+cloudflared tunnel --url http://localhost:3001
 ```
 
-And give the API Worker the matching webhook secret:
+Cloudflared prints a `https://<random>.trycloudflare.com` URL — paste
+it as the value for `wrangler secret put BRIDGE_URL --env self-host`.
+
+For a stable URL, create a named tunnel and CNAME a subdomain to it
+([docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)).
+
+### Option B — ngrok
 
 ```bash
-cd apps/api
-wrangler secret put BRIDGE_WEBHOOK_SECRET --env self-host
-wrangler deploy --env self-host
+ngrok http 3001
 ```
 
-From the dashboard, create a session → open the QR modal → scan with
-WhatsApp. The bridge emits `auth.ready` once paired and you can start
-sending messages.
+Use the `https://...ngrok-free.app` URL as `BRIDGE_URL`.
 
-## Environment variables
+### Option C — a VPS with a public IP
 
-| Var | Default | Required | Purpose |
-| --- | --- | --- | --- |
-| `BRIDGE_TOKEN` | — | yes | Shared bearer token between engine Worker and bridge. |
-| `BRIDGE_WEBHOOK_URL` | unset | no | API `/v1/internal/engine-events` URL. Disables event forwarding when unset. |
-| `BRIDGE_WEBHOOK_SECRET` | `dev-secret-change-me` | yes if URL set | HMAC-SHA256 secret used to sign engine events. |
-| `BRIDGE_PORT` | `3001` | no | Listen port. |
-| `BRIDGE_HOST` | `0.0.0.0` | no | Listen host. |
-| `BRIDGE_AUTH_DIR` | `./.wa-auth` | no | Baileys multi-file auth state directory. Mount a volume here in prod. |
-| `LOG_LEVEL` | `info` | no | Pino log level. |
+Run the bridge behind any reverse proxy (Caddy / nginx / Traefik) with
+TLS, and use that domain as `BRIDGE_URL`.
+
+## Want Docker anyway?
+
+Optional — useful for `systemd`-managed VPS deployments:
+
+```bash
+docker compose -f apps/wa-bridge/docker-compose.yml up -d
+```
+
+## Environment variables (all optional)
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `BRIDGE_TOKEN` | auto-generated | Shared bearer token between engine Worker and bridge. |
+| `BRIDGE_WEBHOOK_URL` | unset | API `/v1/internal/engine-events` URL. Without it, the dashboard still works but webhooks won't fire. |
+| `BRIDGE_WEBHOOK_SECRET` | auto-generated | HMAC-SHA256 secret used to sign engine events. |
+| `BRIDGE_PORT` | `3001` | Listen port. |
+| `BRIDGE_HOST` | `0.0.0.0` | Listen host. |
+| `BRIDGE_AUTH_DIR` | `./.wa-auth` | Where Baileys auth state and generated config live. |
+| `LOG_LEVEL` | `info` | Pino log level. |
 
 ## HTTP surface
 
@@ -70,14 +120,11 @@ All routes except `GET /health` require `Authorization: Bearer $BRIDGE_TOKEN`.
 | POST   | `/sessions/:id/messages/media` | `{to, kind, url\|base64, mimeType?, caption?, filename?, ptt?}` |
 | POST   | `/sessions/:id/delete` | dispose engine + remove from map |
 
-## Hosting
+## Backup
 
-The bridge is a stateful Node process; it can't run on Workers/Pages. Pick:
+The only state worth backing up is `./.wa-auth/`. It contains:
 
-- **Fly.io** (free tier): `fly launch --dockerfile apps/wa-bridge/Dockerfile`, attach a volume at `/data/wa-auth`.
-- **VPS / Hetzner / DigitalOcean**: `docker run -d -p 3001:3001 -v wa_auth:/data/wa-auth -e BRIDGE_TOKEN=... openwa/wa-bridge`.
-- **Local Docker** (development): `docker compose -f docker-compose.dev.yml up wa-bridge`.
+- Baileys session keys (`<sessionId>/`) — losing these means re-pairing on next start.
+- `.bridge-config.json` — the generated `BRIDGE_TOKEN` and `BRIDGE_WEBHOOK_SECRET`.
 
-Whatever you pick, terminate TLS at the front (Cloudflare Tunnel, Fly's
-managed TLS, a reverse proxy). The bridge speaks plain HTTP; the bearer
-token is the only trust boundary.
+Copying that directory between machines is a complete migration.

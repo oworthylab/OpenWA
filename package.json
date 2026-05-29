@@ -14,6 +14,8 @@
     "lint": "turbo run lint",
     "format": "biome format --write .",
     "typecheck": "turbo run typecheck",
+    "bridge": "cd apps/wa-bridge && bun run start",
+    "bridge:dev": "cd apps/wa-bridge && bun run dev",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "prepare": "lefthook install || true"
   },
