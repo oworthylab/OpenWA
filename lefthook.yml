@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,ts,tsx,jsx,json,jsonc}"
+      run: bunx @biomejs/biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files} && git add {staged_files}
+
+pre-push:
+  commands:
+    typecheck:
+      run: bun run typecheck

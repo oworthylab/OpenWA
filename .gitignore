@@ -8,6 +8,9 @@ dist/
 build/
 .next/
 out/
+.turbo/
+.wrangler/
+*.tsbuildinfo
 
 # Testing
 coverage/
@@ -18,6 +21,8 @@ _ref/mart
 .env.development.local
 .env.test.local
 .env.production.local
+.dev.vars
+.dev.vars.*
 
 # Logs
 npm-debug.log*
@@ -37,7 +42,9 @@ Thumbs.db
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 *.swp
 *.swo
 *.sublime-workspace
