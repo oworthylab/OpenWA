@@ -34,6 +34,7 @@ import {
   verifyVerificationToken,
 } from '../lib/password.js';
 import { isSelfHostEnabled } from '../lib/self-host.js';
+import { authenticate } from '../middleware/auth.js';
 
 const REGISTRATION_IP_LIMIT = 5;
 const REGISTRATION_IP_WINDOW_SECONDS = 60 * 60;
@@ -263,6 +264,34 @@ export function authRoutes(env: ApiEnv) {
           .set({ lastLoginAt: new Date(), updatedAt: new Date() })
           .where(eq(users.id, row.id));
         return Response.json({ userId: row.id });
+      })
+      // -------- POST /v1/auth/validate --------
+      // Lightweight endpoint the dashboard hits with X-API-Key to confirm
+      // the key works and discover the caller's role. Mirrors the legacy
+      // NestJS endpoint so the existing SPA login flow keeps working.
+      .post('/validate', async ({ request }) => {
+        const auth = await authenticate(request, env);
+        // Dashboard role enum is admin/operator/viewer; map API roles.
+        const role =
+          auth.role === 'admin' ? 'admin' : auth.role === 'read_write' ? 'operator' : 'viewer';
+        return Response.json({
+          valid: true,
+          role,
+          tenantId: auth.tenantId,
+          keyId: auth.keyId,
+        });
+      })
+      // GET form for convenience / health checks.
+      .get('/validate', async ({ request }) => {
+        const auth = await authenticate(request, env);
+        const role =
+          auth.role === 'admin' ? 'admin' : auth.role === 'read_write' ? 'operator' : 'viewer';
+        return Response.json({
+          valid: true,
+          role,
+          tenantId: auth.tenantId,
+          keyId: auth.keyId,
+        });
       })
   );
 }
