@@ -11,7 +11,8 @@
     "./types": "./src/types/index.ts",
     "./events": "./src/events/index.ts",
     "./api": "./src/api/index.ts",
-    "./errors": "./src/errors/index.ts"
+    "./errors": "./src/errors/index.ts",
+    "./desktop": "./src/desktop/index.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

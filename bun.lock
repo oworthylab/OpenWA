@@ -40,6 +40,31 @@
         "typescript": "^5.7.3",
       },
     },
+    "apps/desktop": {
+      "name": "@openwa/desktop",
+      "version": "0.0.1",
+      "dependencies": {
+        "@openwa/engine": "workspace:*",
+        "@openwa/shared": "workspace:*",
+        "@openwa/validators": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.0",
+        "typescript": "^5.7.3",
+      },
+      "peerDependencies": {
+        "better-sqlite3": "^11.0.0",
+        "electron": "^33.0.0",
+        "electron-builder": "^25.0.0",
+        "electron-updater": "^6.3.0",
+      },
+      "optionalPeers": [
+        "better-sqlite3",
+        "electron",
+        "electron-builder",
+        "electron-updater",
+      ],
+    },
     "apps/engine": {
       "name": "@openwa/engine-worker",
       "version": "0.0.1",
@@ -308,6 +333,8 @@
     "@openwa/dashboard": ["@openwa/dashboard@workspace:apps/dashboard"],
 
     "@openwa/db": ["@openwa/db@workspace:packages/db"],
+
+    "@openwa/desktop": ["@openwa/desktop@workspace:apps/desktop"],
 
     "@openwa/engine": ["@openwa/engine@workspace:packages/engine"],
 
